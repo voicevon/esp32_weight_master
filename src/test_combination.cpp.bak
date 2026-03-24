@@ -1,0 +1,39 @@
+#include <Arduino.h>
+#include <vector>
+#include "CombinationEngine.h"
+
+void setup() {
+    Serial.begin(115200);
+    delay(2000);
+    
+    Serial.println("--- Combination Engine Test ---");
+    
+    CombinationEngine engine(300.0, 5.0);
+    
+    // Mock weights for 10 units
+    std::vector<float> mockWeights = {
+        105.2, 98.5, 110.1, 45.2, 150.3, 
+        20.1, 88.4, 112.5, 99.9, 55.6
+    };
+    
+    Serial.print("Weights: ");
+    for(float w : mockWeights) { Serial.print(w); Serial.print(" "); }
+    Serial.println();
+    
+    unsigned long start = millis();
+    CombinationResult res = engine.findBestCombination(mockWeights);
+    unsigned long end = millis();
+    
+    if (res.success) {
+        Serial.printf("Success! Total: %.2f g\n", res.totalWeight);
+        Serial.print("Selected IDs: ");
+        for(int id : res.selectedIndices) { Serial.print(id); Serial.print(" "); }
+        Serial.println();
+    } else {
+        Serial.println("No combination found within tolerance.");
+    }
+    
+    Serial.printf("Calculation took: %lu ms\n", end - start);
+}
+
+void loop() {}
