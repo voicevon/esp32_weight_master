@@ -21,6 +21,7 @@ public:
     void drawMenu(const String& title, const std::vector<String>& items, int cursorIndex, int scrollOffset) override;
     void drawNodeDetail(int id, float weight, bool online) override;
     void drawParamEdit(const String& label, float value) override;
+    void drawAbout(const String& version, const String& buildDate) override;
 
 private:
     void drawBarGraph(const std::vector<float>& weights, float target);

@@ -17,9 +17,9 @@
 #define RS485_BAUD      115200
 
 // --- 旋转编码器 (HMI 交互) ---
-#define ENC_CLK         21  // HPOSH (Phase A)
-#define ENC_DT          19  // HB (Phase B)
-#define ENC_SW          18  // HA (Button)
+#define ENCODER_A       18  
+#define ENCODER_B       19  
+#define ENCODER_BUTTON  21  
 
 // --- 从机与电机 ID 分配 ---
 #define NUM_SLAVES      20  // 称重单元总数 (1-20)

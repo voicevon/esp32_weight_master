@@ -2,15 +2,15 @@
 
 UserInterface* UserInterface::instance = nullptr;
 
-UserInterface::UserInterface() : _state(SPLASH_SCREEN), _stateStartTime(millis()) {}
+UserInterface::UserInterface() : _state(SCREEN_SPLASH), _stateStartTime(millis()) {}
 
 UserInterface* UserInterface::getInstance() {
     if (!instance) instance = new UserInterface();
     return instance;
 }
 
-void UserInterface::initialize(int clk, int dt, int sw, float* target, float* tolerance, Rs485Master* rs485) {
-    _encoder = new AiEsp32RotaryEncoder(clk, dt, sw, -1, 4);
+void UserInterface::initialize(float* target, float* tolerance, Rs485Master* rs485) {
+    _encoder = new AiEsp32RotaryEncoder(ENCODER_A, ENCODER_B, ENCODER_BUTTON, -1, 4);
     _encoder->begin();
     _encoder->setup([]() {});
     _encoder->setBoundaries(0, 1000, false);
@@ -31,36 +31,53 @@ void UserInterface::setupMenuTree() {
     MenuNode* diag = new MenuNode("DIAGNOSIS", root);
     MenuNode* config = new MenuNode("CONFIGURE", root);
 
-    // Diagnosis
+    // 1. Production Mode
+    root->addItem(MenuItem("1. START PRODUCTION", MENU_TYPE_ACTION, nullptr, [this](){
+        _currentMode = MODE_PRODUCTION;
+        _state = SCREEN_MAIN;
+        _encoder->setBoundaries(0, 5000, false);
+        _encoder->setEncoderValue((long)(*_targetWeight * 10));
+    }));
+
+    // 2. Standby / Stop
+    root->addItem(MenuItem("2. STOP / STANDBY", MENU_TYPE_ACTION, nullptr, [this](){
+        _currentMode = MODE_STANDBY;
+        _state = SCREEN_MAIN;
+    }));
+
+    // 3. Diagnosis Submenu
     diag->addItem(MenuItem("Node Status", MENU_TYPE_ACTION, nullptr, [this](){
-        _state = DETAIL_SCREEN;
+        _currentMode = MODE_DIAGNOSIS;
+        _state = SCREEN_DETAIL;
         _selectedNode = 1;
         _encoder->setBoundaries(1, 20, true);
         _encoder->setEncoderValue(1);
     }));
-    diag->addItem(MenuItem("Back", MENU_TYPE_BACK));
+    diag->addItem(MenuItem("< Back", MENU_TYPE_BACK));
+    root->addItem(MenuItem("3. DIAGNOSIS", MENU_TYPE_SUBMENU, diag));
 
-    // Configure
+    // 4. Configure Submenu
     config->addItem(MenuItem("Target Weight", MENU_TYPE_ACTION, nullptr, [this](){
-        _state = EDIT_SCREEN;
+        _currentMode = MODE_CONFIGURATION;
+        _state = SCREEN_EDIT;
         _editParamIdx = 0;
         _encoder->setBoundaries(100, 5000, false);
         _encoder->setEncoderValue((long)(*_targetWeight * 10));
     }));
     config->addItem(MenuItem("Tolerance", MENU_TYPE_ACTION, nullptr, [this](){
-        _state = EDIT_SCREEN;
+        _currentMode = MODE_CONFIGURATION;
+        _state = SCREEN_EDIT;
         _editParamIdx = 1;
         _encoder->setBoundaries(0, 500, false);
         _encoder->setEncoderValue((long)(*_tolerance * 10));
     }));
-    config->addItem(MenuItem("Back", MENU_TYPE_BACK));
+    config->addItem(MenuItem("< Back", MENU_TYPE_BACK));
+    root->addItem(MenuItem("4. CONFIGURE", MENU_TYPE_SUBMENU, config));
 
-    root->addItem(MenuItem("1. Diagnosis", MENU_TYPE_SUBMENU, diag));
-    root->addItem(MenuItem("2. Configure", MENU_TYPE_SUBMENU, config));
-    root->addItem(MenuItem("3. Exit", MENU_TYPE_ACTION, nullptr, [this](){
-        _state = DASHBOARD_SCREEN;
-        _encoder->setBoundaries(0, 5000, false);
-        _encoder->setEncoderValue((long)(*_targetWeight * 10));
+    // 5. About
+    root->addItem(MenuItem("5. ABOUT", MENU_TYPE_ACTION, nullptr, [this](){
+        _currentMode = MODE_ABOUT;
+        _state = SCREEN_MAIN; // Case for About is handled in draw based on mode
     }));
 
     _menu.setRootMenu(root);
@@ -75,28 +92,33 @@ void UserInterface::update(const std::vector<float>& weights, const String& stat
     for (auto d : _displays) {
         d->clear();
         switch (_state) {
-            case SPLASH_SCREEN:
+            case SCREEN_SPLASH:
                 d->drawSplash();
                 if (millis() - _stateStartTime > 2000) {
-                    _state = DASHBOARD_SCREEN;
+                    _state = SCREEN_MAIN;
                     _encoder->setBoundaries(0, 5000, false);
                     _encoder->setEncoderValue((long)(*_targetWeight * 10));
                 }
                 break;
-            case DASHBOARD_SCREEN:
-                d->drawDashboard(weights, *_targetWeight, *_tolerance, status);
+            case SCREEN_MAIN:
+                if (_currentMode == MODE_ABOUT) {
+                    d->drawAbout("v1.2.5", __DATE__);
+                } else {
+                    String modeTag = (_currentMode == MODE_PRODUCTION) ? "[RUN]" : "[IDLE]";
+                    d->drawDashboard(weights, *_targetWeight, *_tolerance, modeTag + " " + status);
+                }
                 break;
-            case MENU_SCREEN: {
+            case SCREEN_MENU: {
                 auto node = _menu.getCurrentNode();
                 std::vector<String> items;
                 for (auto& item : node->items) items.push_back(item.label);
                 d->drawMenu(node->title, items, _menu.getCursorIndex(), _menu.getScrollOffset());
                 break;
             }
-            case DETAIL_SCREEN:
+            case SCREEN_DETAIL:
                 d->drawNodeDetail(_selectedNode, weights[_selectedNode-1], _rs485->isNodeOnline(_selectedNode));
                 break;
-            case EDIT_SCREEN:
+            case SCREEN_EDIT:
                 if (_editParamIdx == 0) d->drawParamEdit("Target", (float)_encoder->readEncoder()/10.0f);
                 else d->drawParamEdit("Tolerance", (float)_encoder->readEncoder()/10.0f);
                 break;
@@ -116,31 +138,35 @@ void UserInterface::handleInput() {
     }
 
     switch (_state) {
-        case DASHBOARD_SCREEN:
+        case SCREEN_MAIN:
             if (clicked) {
-                _state = MENU_SCREEN;
+                _state = SCREEN_MENU;
                 _menu.reset();
             }
             break;
-        case MENU_SCREEN:
-            // Since we use the raw encoder value for MenuSystem, we need to handle deltas
+        case SCREEN_MENU: {
             static long lastVal = 0;
+            // IMPORTANT: Initialize lastVal when first entering SCREEN_MENU to avoid delta spikes
+            static UIState lastState = SCREEN_SPLASH;
+            if (lastState != SCREEN_MENU) {
+                lastVal = rawVal;
+                lastState = SCREEN_MENU;
+            }
             _menu.handleInput((int)(rawVal - lastVal), clicked);
             lastVal = rawVal;
             break;
-        case DETAIL_SCREEN:
+        }
+        case SCREEN_DETAIL:
             _selectedNode = (int)rawVal;
             if (clicked) {
-                _state = MENU_SCREEN;
-                // No reset needed, stay in Diagnosis menu
+                _state = SCREEN_MENU;
             }
             break;
-        case EDIT_SCREEN:
+        case SCREEN_EDIT:
             if (_editParamIdx == 0) *_targetWeight = (float)rawVal / 10.0f;
             else *_tolerance = (float)rawVal / 10.0f;
             if (clicked) {
-                _state = MENU_SCREEN;
-                // Stay in Configure menu
+                _state = SCREEN_MENU;
             }
             break;
         default: break;

@@ -31,7 +31,7 @@ void setup() {
     if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
         Serial.println(F("SSD1306 allocation failed"));
     }
-    UserInterface::getInstance()->initialize(ENC_CLK, ENC_DT, ENC_SW, &targetWeight, &tolerance, &rs485);
+    UserInterface::getInstance()->initialize(&targetWeight, &tolerance, &rs485);
     UserInterface::getInstance()->addDisplay(new OLEDDisplay(display));
 
     rs485.begin();
@@ -55,7 +55,8 @@ void loop() {
     
     // 4. 定义分拣引擎调度 (每 100ms 尝试一次新的组合寻找)
     static unsigned long lastCalcTime = 0;
-    if (millis() - lastCalcTime > 100 && systemStatus == "READY") {
+    bool isProduction = (UserInterface::getInstance()->getMode() == MODE_PRODUCTION);
+    if (millis() - lastCalcTime > 100 && systemStatus == "READY" && isProduction) {
         lastCalcTime = millis();
         
         engine.setTargetWeight(targetWeight); 

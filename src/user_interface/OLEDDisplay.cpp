@@ -97,3 +97,21 @@ void OLEDDisplay::drawParamEdit(const String& label, float value) {
     _oled.setCursor(20, 30);
     _oled.printf("%.1fg", value);
 }
+
+void OLEDDisplay::drawAbout(const String& version, const String& buildDate) {
+    _oled.setTextColor(SSD1306_WHITE);
+    _oled.setTextSize(1);
+    _oled.setCursor(0, 0);
+    _oled.print("ABOUT SYSTEM");
+    _oled.drawLine(0, 10, 128, 10, SSD1306_WHITE);
+    
+    _oled.setCursor(5, 20);
+    _oled.print("Product: W.Master");
+    _oled.setCursor(5, 32);
+    _oled.print("Ver: " + version);
+    _oled.setCursor(5, 44);
+    _oled.print("Date: " + buildDate);
+    
+    _oled.setCursor(5, 56);
+    _oled.print("Click to back");
+}

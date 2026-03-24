@@ -7,12 +7,20 @@
 #include "MenuSystem.h"
 #include "system/Rs485Master.h"
 
+enum OperationMode {
+    MODE_STANDBY,
+    MODE_PRODUCTION,
+    MODE_DIAGNOSIS,
+    MODE_CONFIGURATION,
+    MODE_ABOUT
+};
+
 enum UIState {
-    SPLASH_SCREEN,
-    DASHBOARD_SCREEN,
-    MENU_SCREEN,
-    DETAIL_SCREEN,
-    EDIT_SCREEN
+    SCREEN_SPLASH,
+    SCREEN_MAIN,
+    SCREEN_MENU,
+    SCREEN_DETAIL,
+    SCREEN_EDIT
 };
 
 class UserInterface {
@@ -24,7 +32,8 @@ private:
     MenuSystem _menu;
     AiEsp32RotaryEncoder* _encoder;
     
-    UIState _state = SPLASH_SCREEN;
+    OperationMode _currentMode = MODE_STANDBY;
+    UIState _state = SCREEN_SPLASH;
     unsigned long _lastUpdate = 0;
     unsigned long _stateStartTime = 0;
     unsigned long _lastButtonTime = 0;
@@ -40,10 +49,13 @@ private:
 
 public:
     static UserInterface* getInstance();
-    void initialize(int clk, int dt, int sw, float* target, float* tolerance, Rs485Master* rs485);
+    void initialize(float* target, float* tolerance, Rs485Master* rs485);
     void addDisplay(Display* display);
     
     void update(const std::vector<float>& weights, const String& status);
+    
+    void setMode(OperationMode mode) { _currentMode = mode; }
+    OperationMode getMode() const { return _currentMode; }
     
 private:
     void setupMenuTree();
