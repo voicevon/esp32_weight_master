@@ -1,7 +1,7 @@
 #ifndef CONVEYOR_CONTROLLER_H
 #define CONVEYOR_CONTROLLER_H
 
-#include "Rs485Master.h"
+#include "system/Rs485Master.h"
 
 class ConveyorController {
 public:

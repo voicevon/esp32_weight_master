@@ -6,8 +6,11 @@ union FloatConverter {
     uint16_t r[2];
 };
 
+Rs485Master* Rs485Master::_instance = nullptr;
+
 Rs485Master::Rs485Master(int rxPin, int txPin, int enPin, long baud)
     : _rxPin(rxPin), _txPin(txPin), _enPin(enPin), _baud(baud) {
+    _instance = this;
     for (int i = 0; i < 21; i++) {
         _cachedWeights[i] = 0.0f;
         _onlineStatus[i] = false;
@@ -39,12 +42,12 @@ void Rs485Master::update() {
     // 空闲状态：发起下一个 ID 的查询
     _isWaiting = true;
     _lastPollTime = millis();
-    _mb.readHreg(_currentPollId, REG_WEIGHT_H, _tempRegs, 2, cbPoll, this);
+    _mb.readHreg(_currentPollId, REG_WEIGHT_H, _tempRegs, 2, cbPoll);
 }
 
 // 静态回调：数据接收到位后在此处更新缓存
 bool Rs485Master::cbPoll(Modbus::ResultCode event, uint16_t transactionId, void* data) {
-    Rs485Master* instance = (Rs485Master*)data;
+    Rs485Master* instance = _instance;
     
     if (event == Modbus::EX_SUCCESS) {
         FloatConverter conv;

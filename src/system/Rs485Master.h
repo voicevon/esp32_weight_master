@@ -3,11 +3,7 @@
 
 #include <Arduino.h>
 #include <ModbusRTU.h>
-
-// 寄存器地址定义（必须与从机保持一致）
-#define REG_WEIGHT_H    0x0000
-#define REG_STATUS      0x0002
-#define REG_CTRL_CMD    0x0100
+#include "PinDefinition.h"
 
 class Rs485Master {
 public:
@@ -42,6 +38,7 @@ private:
     uint16_t _tempRegs[2];     // 用于接收 32bit Float 的临时缓冲区
 
     bool waitTransaction(uint8_t id);
+    static Rs485Master* _instance;
     static bool cbPoll(Modbus::ResultCode event, uint16_t transactionId, void* data);
 };
 
