@@ -30,6 +30,8 @@ public:
     // 诊断接口
     bool performLoopbackTest(); // 执行环回测试
     void sendRawByte(uint8_t byte); // 发送单字节脉冲 (1Hz 诊断用)
+    int availableRaw(); // 获取原始串口可用字节数
+    uint8_t readRawByte(); // 读取原始串口单字节
     uint32_t getPacketsSent() const { return _packetsSent; }
     uint32_t getPacketsDropped() const { return _packetsDropped; }
     void resetStats() { _packetsSent = 0; _packetsDropped = 0; }

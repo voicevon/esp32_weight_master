@@ -21,55 +21,56 @@ void UserInterface::initialize(float* targetMin, float* targetMax, ModbusMaster*
 
 void UserInterface::addDisplay(Display* display) {
     _displays.push_back(display);
+    display->begin();
 }
 
 void UserInterface::setupMenuTree() {
-    MenuNode* root = new MenuNode("MAIN MENU");
-    MenuNode* diag = new MenuNode("DIAGNOSIS", root);
-    MenuNode* config = new MenuNode("CONFIGURE", root);
+    MenuNode* root = new MenuNode("主菜单");
+    MenuNode* diag = new MenuNode("诊断调试", root);
+    MenuNode* config = new MenuNode("参数设置", root);
 
     // 1. Dashboard (Main Monitoring)
-    root->addItem(MenuItem("1. DASHBOARD", MENU_TYPE_ACTION, nullptr, [this](){
+    root->addItem(MenuItem("1. 工作主屏", MENU_TYPE_ACTION, nullptr, [this](){
         _currentMode = MODE_PRODUCTION;
         _state = SCREEN_MAIN;
     }));
 
     // 2. Diagnosis Submenu
-    diag->addItem(MenuItem("Node Status", MENU_TYPE_ACTION, nullptr, [this](){
-        _currentMode = MODE_DIAG_DETAIL;
-        _state = SCREEN_DETAIL;
-        _selectedNode = 1;
-    }));
-    diag->addItem(MenuItem("RS485 Pulse Test", MENU_TYPE_ACTION, nullptr, [this](){
-        _currentMode = MODE_DIAG_PULSE;
-        _state = SCREEN_RS485_DIAG;
-        _loopbackResult = -1;
-        _rs485->resetStats();
-    }));
-    diag->addItem(MenuItem("Scan Nodes", MENU_TYPE_ACTION, nullptr, [this](){
+    diag->addItem(MenuItem("1. 扫描节点", MENU_TYPE_ACTION, nullptr, [this](){
         _currentMode = MODE_DIAG_SCAN;
         _state = SCREEN_SCAN;
         _rs485->startScan();
     }));
-    diag->addItem(MenuItem("< Back", MENU_TYPE_BACK));
-    root->addItem(MenuItem("2. DIAGNOSIS", MENU_TYPE_SUBMENU, diag));
+    diag->addItem(MenuItem("2. 节点状态", MENU_TYPE_ACTION, nullptr, [this](){
+        _currentMode = MODE_DIAG_DETAIL;
+        _state = SCREEN_DETAIL;
+        _selectedNode = 1;
+    }));
+    diag->addItem(MenuItem("3. 物理总线测试", MENU_TYPE_ACTION, nullptr, [this](){
+        _currentMode = MODE_DIAG_PULSE;
+        _state = SCREEN_RS485_DIAG;
+        _diagRxCount = 0; // 重置接收计数
+        _rs485->resetStats();
+    }));
+    diag->addItem(MenuItem("4. < 返回", MENU_TYPE_BACK));
+    root->addItem(MenuItem("2. 诊断调试", MENU_TYPE_SUBMENU, diag));
 
     // 3. Configure Submenu
-    config->addItem(MenuItem("Target Min", MENU_TYPE_ACTION, nullptr, [this](){
+    config->addItem(MenuItem("1. 目标最小值", MENU_TYPE_ACTION, nullptr, [this](){
         _currentMode = MODE_CONFIGURATION;
         _state = SCREEN_EDIT;
         _editParamIdx = 0;
     }));
-    config->addItem(MenuItem("Target Max", MENU_TYPE_ACTION, nullptr, [this](){
+    config->addItem(MenuItem("2. 目标最大值", MENU_TYPE_ACTION, nullptr, [this](){
         _currentMode = MODE_CONFIGURATION;
         _state = SCREEN_EDIT;
         _editParamIdx = 1;
     }));
-    config->addItem(MenuItem("< Back", MENU_TYPE_BACK));
-    root->addItem(MenuItem("3. CONFIGURE", MENU_TYPE_SUBMENU, config));
+    config->addItem(MenuItem("3. < 返回", MENU_TYPE_BACK));
+    root->addItem(MenuItem("3. 系统设置", MENU_TYPE_SUBMENU, config));
 
     // 4. About
-    root->addItem(MenuItem("4. ABOUT", MENU_TYPE_ACTION, nullptr, [this](){
+    root->addItem(MenuItem("4. 关于系统", MENU_TYPE_ACTION, nullptr, [this](){
         _currentMode = MODE_ABOUT;
         _state = SCREEN_MAIN;
     }));
@@ -80,11 +81,17 @@ void UserInterface::setupMenuTree() {
 void UserInterface::update(const std::vector<float>& weights, const String& status) {
     handleInput();
     
-    // RS485 诊断屏幕下的 1Hz 脉冲逻辑
+    // RS485 诊断屏幕下的 1Hz 脉冲与 RX 监听逻辑
     if (_state == SCREEN_RS485_DIAG) {
         if (millis() - _lastPulseTime >= 1000) {
             _lastPulseTime = millis();
             _rs485->sendRawByte(_diagTxByte++);
+        }
+        
+        // 实时读取 RX 原始字节
+        while (_rs485->availableRaw()) {
+            _diagRxByte = _rs485->readRawByte();
+            _diagRxCount++;
         }
     }
 
@@ -123,7 +130,7 @@ void UserInterface::update(const std::vector<float>& weights, const String& stat
                 else d->drawParamEdit("Max Target", *_targetMax);
                 break;
             case SCREEN_RS485_DIAG:
-                d->drawRs485Diag(_rs485->getPacketsSent(), _rs485->getPacketsDropped(), _loopbackResult, _diagTxByte);
+                d->drawRs485Diag(_diagTxByte, _diagRxByte, _diagRxCount);
                 break;
             case SCREEN_SCAN:
                 d->drawScan(_rs485->getScanProgress(), !_rs485->isScanning(), _rs485->getOnlineStatusArray());

@@ -31,8 +31,9 @@ private:
     // Detail/Edit context
     int _selectedNode = 1;
     int _editParamIdx = 0; 
-    int _loopbackResult = -1; 
     uint8_t _diagTxByte = 0;
+    uint8_t _diagRxByte = 0;
+    uint32_t _diagRxCount = 0;
     unsigned long _lastPulseTime = 0;
 
 public:

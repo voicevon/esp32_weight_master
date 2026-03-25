@@ -1,16 +1,16 @@
 #ifndef OLED_DISPLAY_H
 #define OLED_DISPLAY_H
 
-#include <Adafruit_SSD1306.h>
+#include <U8g2lib.h>
 #include "Display.h"
 #include "system/PinDefinition.h"
 
 class OLEDDisplay : public Display {
 private:
-    Adafruit_SSD1306& _oled;
+    U8G2& _oled;
 
 public:
-    OLEDDisplay(Adafruit_SSD1306& oled) : _oled(oled) {}
+    OLEDDisplay(U8G2& oled) : _oled(oled) {}
     
     void begin() override;
     void clear() override;
@@ -21,7 +21,7 @@ public:
     void drawMenu(const String& title, const std::vector<String>& items, int cursorIndex, int scrollOffset) override;
     void drawNodeDetail(int id, float weight, bool online) override;
     void drawParamEdit(const String& name, float value) override;
-    void drawRs485Diag(uint32_t sent, uint32_t dropped, int loopbackResult, uint8_t txPulse) override;
+    void drawRs485Diag(uint32_t txPulse, uint8_t rxByte, uint32_t rxCount) override;
     void drawScan(int progress, bool finished, const bool* onlineStatus) override;
     void drawAbout(const String& version, const String& buildDate) override;
 

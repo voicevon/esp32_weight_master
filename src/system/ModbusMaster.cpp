@@ -18,6 +18,8 @@ ModbusMaster::ModbusMaster(int rxPin, int txPin, int enPin, long baud)
 }
 
 void ModbusMaster::begin() {
+    pinMode(_enPin, OUTPUT);
+    digitalWrite(_enPin, RS485_RX_ENABLE);
     Serial2.begin(_baud, SERIAL_8N1, _rxPin, _txPin);
     _mb.begin(&Serial2, _enPin);
     _mb.master();
@@ -212,4 +214,12 @@ void ModbusMaster::sendRawByte(uint8_t byte) {
     Serial2.flush();
     delayMicroseconds(50);
     digitalWrite(_enPin, RS485_RX_ENABLE);
+}
+
+int ModbusMaster::availableRaw() {
+    return Serial2.available();
+}
+
+uint8_t ModbusMaster::readRawByte() {
+    return (uint8_t)Serial2.read();
 }

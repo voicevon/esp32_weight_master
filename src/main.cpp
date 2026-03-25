@@ -1,7 +1,6 @@
 #include <Arduino.h>
 #include <Wire.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
+#include <U8g2lib.h>
 #include <vector>
 #include "system/ModbusMaster.h"
 #include "logic/CombinationEngine.h"
@@ -27,7 +26,7 @@ SemaphoreHandle_t mutexStatus;  // 保护 systemStatus
 // ---------------------------
 // 全局对象
 // ---------------------------
-Adafruit_SSD1306 display(128, 64, &Wire, -1);
+U8G2_SSD1306_128X64_NONAME_F_HW_I2C display(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
 ModbusMaster rs485(PIN_RS485_RX, PIN_RS485_TX, PIN_RS485_TX_EN, RS485_BAUD);
 CombinationEngine engine(targetMin, targetMax);
 ConveyorController conveyor(&rs485, MOTOR_ID_BELT1, MOTOR_ID_BELT2);
@@ -157,9 +156,13 @@ void setup() {
     mutexStatus = xSemaphoreCreateMutex();
 
     // 初始化 HMI (Core 0 操作)
-    if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
-        Serial.println(F("SSD1306 allocation failed"));
+    display.setI2CAddress(0x3C * 2); // U8g2 expects 8-bit address or use setI2CAddress
+    // Alternatively, just call begin() if 0x3C is default. 
+    // Actually U8g2 begin() handles it.
+    if(!display.begin()) {
+        Serial.println(F("U8g2 initialization failed"));
     }
+    display.enableUTF8Print(); // Enable UTF8 for Chinese support
     UserInterface::getInstance()->initialize(&targetMin, &targetMax, &rs485);
     UserInterface::getInstance()->addDisplay(new OLEDDisplay(display));
 
