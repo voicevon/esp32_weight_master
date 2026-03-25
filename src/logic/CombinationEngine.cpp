@@ -7,8 +7,8 @@ struct SubsetResult {
     uint32_t mask;
 };
 
-CombinationEngine::CombinationEngine(float targetWeight, float tolerance)
-    : _targetWeight(targetWeight), _tolerance(tolerance) {}
+CombinationEngine::CombinationEngine(float minWeight, float maxWeight)
+    : _minWeight(minWeight), _maxWeight(maxWeight) {}
 
 CombinationResult CombinationEngine::findBestCombination(const std::vector<float>& weights) {
     CombinationResult bestResult = {false, 0.0f, {}};
@@ -18,7 +18,7 @@ CombinationResult CombinationEngine::findBestCombination(const std::vector<float
     int n1 = n / 2;
     int n2 = n - n1;
 
-    // 1. 实现前半部分的生成
+    // 1. Generate all subset sums for the first half
     std::vector<SubsetResult> left;
     left.reserve(1 << n1);
     for (int i = 0; i < (1 << n1); i++) {
@@ -27,36 +27,39 @@ CombinationResult CombinationEngine::findBestCombination(const std::vector<float
         left.push_back({sum, (uint32_t)i});
     }
 
-    // 2. 预排序
+    // 2. Sort left subsets
     std::sort(left.begin(), left.end(), [](const SubsetResult& a, const SubsetResult& b) {
         return a.weight < b.weight;
     });
 
-    float minError = _tolerance;
+    float bestWeight = 1e9; // We want the smallest weight within [min, max]
     
-    // 3. 后半部分匹配
+    // 3. Match with the second half
     for (int i = 0; i < (1 << n2); i++) {
         float sum2 = 0;
         for (int j = 0; j < n2; j++) if ((i >> j) & 1) sum2 += weights[n1 + j];
 
-        float needed = _targetWeight - sum2;
-        auto it = std::lower_bound(left.begin(), left.end(), needed, 
+        float lower = _minWeight - sum2;
+        float upper = _maxWeight - sum2;
+        
+        // Find first sum >= lower
+        auto it = std::lower_bound(left.begin(), left.end(), lower, 
             [](const SubsetResult& sr, float val) { return sr.weight < val; });
 
         if (it != left.end()) {
             float total = it->weight + sum2;
-            float error = total - _targetWeight;
-
-            if (error >= 0 && error < minError) {
-                minError = error;
-                bestResult.success = true;
-                bestResult.totalWeight = total;
-                
-                bestResult.selectedIndices.clear();
-                for (int j = 0; j < n1; j++) if ((it->mask >> j) & 1) bestResult.selectedIndices.push_back(j + 1);
-                for (int j = 0; j < n2; j++) if ((i >> j) & 1) bestResult.selectedIndices.push_back(n1 + j + 1);
-                
-                if (error == 0) break;
+            if (total >= _minWeight && total <= _maxWeight) {
+                if (total < bestWeight) {
+                    bestWeight = total;
+                    bestResult.success = true;
+                    bestResult.totalWeight = total;
+                    
+                    bestResult.selectedIndices.clear();
+                    for (int j = 0; j < n1; j++) if ((it->mask >> j) & 1) bestResult.selectedIndices.push_back(j + 1);
+                    for (int j = 0; j < n2; j++) if ((i >> j) & 1) bestResult.selectedIndices.push_back(n1 + j + 1);
+                    
+                    if (total == _minWeight) break; // Perfect match
+                }
             }
         }
     }

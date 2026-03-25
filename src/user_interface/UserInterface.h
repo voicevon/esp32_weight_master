@@ -2,26 +2,12 @@
 #define USER_INTERFACE_H
 
 #include <Adafruit_SSD1306.h>
-#include <AiEsp32RotaryEncoder.h>
+#include "Encoder.h"
 #include "Display.h"
 #include "MenuSystem.h"
-#include "system/Rs485Master.h"
+#include "system/ModbusMaster.h"
 
-enum OperationMode {
-    MODE_STANDBY,
-    MODE_PRODUCTION,
-    MODE_DIAGNOSIS,
-    MODE_CONFIGURATION,
-    MODE_ABOUT
-};
-
-enum UIState {
-    SCREEN_SPLASH,
-    SCREEN_MAIN,
-    SCREEN_MENU,
-    SCREEN_DETAIL,
-    SCREEN_EDIT
-};
+#include "system/SystemTypes.h"
 
 class UserInterface {
 private:
@@ -30,26 +16,28 @@ private:
 
     std::vector<Display*> _displays;
     MenuSystem _menu;
-    AiEsp32RotaryEncoder* _encoder;
     
-    OperationMode _currentMode = MODE_STANDBY;
+    OperationMode _currentMode = MODE_IDLE;
     UIState _state = SCREEN_SPLASH;
     unsigned long _lastUpdate = 0;
     unsigned long _stateStartTime = 0;
     unsigned long _lastButtonTime = 0;
 
     // System pointers
-    float* _targetWeight;
-    float* _tolerance;
-    Rs485Master* _rs485;
+    float* _targetMin;
+    float* _targetMax;
+    ModbusMaster* _rs485;
 
     // Detail/Edit context
     int _selectedNode = 1;
-    int _editParamIdx = 0; // 0: Target, 1: Tolerance
+    int _editParamIdx = 0; 
+    int _loopbackResult = -1; 
+    uint8_t _diagTxByte = 0;
+    unsigned long _lastPulseTime = 0;
 
 public:
     static UserInterface* getInstance();
-    void initialize(float* target, float* tolerance, Rs485Master* rs485);
+    void initialize(float* targetMin, float* targetMax, ModbusMaster* rs485);
     void addDisplay(Display* display);
     
     void update(const std::vector<float>& weights, const String& status);

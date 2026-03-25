@@ -20,7 +20,9 @@ public:
     void drawDashboard(const std::vector<float>& weights, float target, float tolerance, const String& status) override;
     void drawMenu(const String& title, const std::vector<String>& items, int cursorIndex, int scrollOffset) override;
     void drawNodeDetail(int id, float weight, bool online) override;
-    void drawParamEdit(const String& label, float value) override;
+    void drawParamEdit(const String& name, float value) override;
+    void drawRs485Diag(uint32_t sent, uint32_t dropped, int loopbackResult, uint8_t txPulse) override;
+    void drawScan(int progress, bool finished, const bool* onlineStatus) override;
     void drawAbout(const String& version, const String& buildDate) override;
 
 private:

@@ -21,6 +21,8 @@ public:
     virtual void drawMenu(const String& title, const std::vector<String>& items, int cursorIndex, int scrollOffset) = 0;
     virtual void drawNodeDetail(int id, float weight, bool online) = 0;
     virtual void drawParamEdit(const String& label, float value) = 0;
+    virtual void drawRs485Diag(uint32_t sent, uint32_t dropped, int loopbackResult, uint8_t txPulse) = 0;
+    virtual void drawScan(int progress, bool finished, const bool* onlineStatus) = 0;
     virtual void drawAbout(const String& version, const String& buildDate) = 0;
 };
 

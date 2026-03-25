@@ -1,11 +1,11 @@
 #ifndef CONVEYOR_CONTROLLER_H
 #define CONVEYOR_CONTROLLER_H
 
-#include "system/Rs485Master.h"
+#include "system/ModbusMaster.h"
 
 class ConveyorController {
 public:
-    ConveyorController(Rs485Master* rs485, int motorId1, int motorId2);
+    ConveyorController(ModbusMaster* rs485, int motorId1, int motorId2);
     void begin();
     
     // 分阶段传输逻辑
@@ -16,7 +16,7 @@ public:
     bool isMoving();
 
 private:
-    Rs485Master* _rs485;
+    ModbusMaster* _rs485;
     int _id1, _id2;
     long _currentPos1, _currentPos2;
 };

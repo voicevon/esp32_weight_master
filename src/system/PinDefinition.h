@@ -7,19 +7,21 @@
  */
 
 // --- I2C 显示屏 (OLED 128x64) ---
-#define I2C_SDA         23
-#define I2C_SCL         22
+#define PIN_I2C_SDA      23
+#define PIN_I2C_SCL      22
 
 // --- RS485 通信 (Serial 2) ---
-#define RS485_RX        16
-#define RS485_TX        17
-#define RS485_EN        5
-#define RS485_BAUD      115200
+#define PIN_RS485_RX     16
+#define PIN_RS485_TX     4
+#define PIN_RS485_TX_EN  5     // 逻辑：HIGH 为发送，LOW 为接收
+#define RS485_TX_ENABLE  HIGH 
+#define RS485_RX_ENABLE  LOW  
+#define RS485_BAUD       9600
 
 // --- 旋转编码器 (HMI 交互) ---
-#define ENCODER_A       18  
-#define ENCODER_B       19  
-#define ENCODER_BUTTON  21  
+#define PIN_ENCODER_A       18  
+#define PIN_ENCODER_B       19  
+#define PIN_ENCODER_BUTTON  21  
 
 // --- 从机与电机 ID 分配 ---
 #define NUM_SLAVES      20  // 称重单元总数 (1-20)

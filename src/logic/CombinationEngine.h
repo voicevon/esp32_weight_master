@@ -11,18 +11,19 @@ struct CombinationResult {
 
 class CombinationEngine {
 public:
-    CombinationEngine(float targetWeight, float tolerance);
+    CombinationEngine(float minWeight, float maxWeight);
     
     // 配置接口
-    void setTargetWeight(float target) { _targetWeight = target; }
-    void setTolerance(float tol) { _tolerance = tol; }
+    void setMinWeight(float min) { _minWeight = min; }
+    void setMaxWeight(float max) { _maxWeight = max; }
+    void setTargetRange(float min, float max) { _minWeight = min; _maxWeight = max; }
 
     // 在提供的重量中寻找最佳组合
     CombinationResult findBestCombination(const std::vector<float>& weights);
 
 private:
-    float _targetWeight;
-    float _tolerance;
+    float _minWeight;
+    float _maxWeight;
 };
 
 #endif
