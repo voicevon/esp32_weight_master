@@ -1,4 +1,5 @@
 #include "OLEDDisplay.h"
+#include "splash_image.h"
 
 void OLEDDisplay::begin() {
     _oled.begin();
@@ -13,12 +14,60 @@ void OLEDDisplay::display() {
     _oled.sendBuffer();
 }
 
-void OLEDDisplay::drawSplash() {
+void OLEDDisplay::drawSplash(uint32_t elapsedMillis) {
     _oled.clearBuffer();
-    _oled.setFont(u8g2_font_wqy12_t_gb2312b);
-    _oled.drawStr(30, 25, "ANTIGRAVITY");
-    _oled.setCursor(35, 45);
-    _oled.print("重量大师"); // "Weight Master" in Chinese
+    
+    // 1. Digital Rain / Matrix Effect (0-2000ms)
+    // We use a simple pseudo-random generator based on elapsedMillis to draw "drops"
+    if (elapsedMillis < 2000) {
+        for (int i = 0; i < 15; i++) {
+            // Deterministic "random" positions based on drop index
+            int x = (i * 137) % 128;
+            int speed = 2 + (i % 3);
+            int yStart = (elapsedMillis * speed / 10) % 100 - 20;
+            int length = 5 + (i % 5);
+            
+            _oled.drawVLine(x, yStart, length);
+            // Add a "tail" pixel for a slightly cooler look
+            if (yStart > 0) _oled.drawPixel(x, yStart - 1);
+        }
+    }
+
+    // 2. Sequenced Text Animation
+    int y1 = 64; // Starting position (off-screen bottom)
+    int y2 = 64;
+    
+    const int targetY1 = 20;
+    const int targetY2 = 45;
+    
+    // Line 1 sliding (400-1200ms)
+    if (elapsedMillis < 400) {
+        y1 = 64;
+    } else if (elapsedMillis < 1200) {
+        float progress = (float)(elapsedMillis - 400) / 800.0f;
+        y1 = 64 - (int)(progress * (64 - targetY1));
+    } else {
+        y1 = targetY1;
+    }
+    
+    // Line 2 sliding (1000-1800ms)
+    if (elapsedMillis < 1000) {
+        y2 = 64;
+    } else if (elapsedMillis < 1800) {
+        float progress = (float)(elapsedMillis - 1000) / 800.0f;
+        y2 = 64 - (int)(progress * (64 - targetY2));
+    } else {
+        y2 = targetY2;
+    }
+
+    // Draw high-res bitmasks
+    if (elapsedMillis > 400) {
+        _oled.drawXBMP(0, y1 - 12, 128, 24, splash_line1);
+    }
+    if (elapsedMillis > 1000) {
+        _oled.drawXBMP(0, y2 - 12, 128, 24, splash_line2);
+    }
+    
     _oled.sendBuffer();
 }
 
@@ -86,15 +135,23 @@ void OLEDDisplay::drawNodeDetail(int id, float weight, bool online) {
     _oled.print("点击编码器返回");
 }
 
-void OLEDDisplay::drawParamEdit(const String& label, float value) {
+void OLEDDisplay::drawParamEdit(const String& label, float value, float refValue, bool isMin) {
     _oled.setFont(u8g2_font_wqy12_t_gb2312b);
-    _oled.setCursor(10, 12);
+    _oled.setCursor(0, 10);
+    if (isMin) {
+        _oled.printf("参考最大值: %.1fg", refValue);
+    } else {
+        _oled.printf("参考最小值: %.1fg", refValue);
+    }
+    _oled.drawHLine(0, 12, 128);
+
+    _oled.setCursor(10, 26);
     _oled.print("正在编辑: ");
     _oled.print(label);
     
-    _oled.setFont(u8g2_font_logisoso18_tn);
-    _oled.setCursor(20, 45);
-    _oled.printf("%d", (int)value);
+    _oled.setFont(u8g2_font_logisoso24_tn); // Even larger font for the value
+    _oled.setCursor(20, 56);
+    _oled.printf("%.1f", value);
     _oled.setFont(u8g2_font_wqy12_t_gb2312b);
     _oled.print("g");
 }
@@ -102,50 +159,42 @@ void OLEDDisplay::drawParamEdit(const String& label, float value) {
 void OLEDDisplay::drawAbout(const String& version, const String& buildDate) {
     _oled.setFont(u8g2_font_wqy12_t_gb2312b);
     _oled.setCursor(0, 10);
-    _oled.print("关于系统");
+    _oled.print("关于");
     _oled.drawHLine(0, 12, 128);
     
     _oled.setCursor(5, 26);
-    _oled.print("Fang's Asp-CombScale"); // Fang casing fixed
-    _oled.setCursor(5, 40);
-    _oled.print("电话: 13306400990");
-    _oled.setCursor(5, 52);
-    _oled.print("版本: "); _oled.print(version);
-    
-    _oled.setCursor(5, 64);
-    _oled.print("Copyright 2026"); // Added copyright, removed "Click to back"
+    _oled.print("冯氏芦笋组合称");
+    _oled.setCursor(5, 42);
+    _oled.print("电话：13306400990");
+    _oled.setCursor(5, 58);
+    _oled.print("2026年4月");
 }
 
 void OLEDDisplay::drawRs485Diag(uint32_t txPulse, uint8_t rxByte, uint32_t rxCount) {
     _oled.setFont(u8g2_font_wqy12_t_gb2312b);
     _oled.setCursor(0, 10);
-    _oled.print("> 物理层总线测试");
+    _oled.print("> 总线测试");
     _oled.drawHLine(0, 12, 128);
 
-    _oled.setCursor(10, 26);
-    _oled.printf("发送脉冲:  0x%02X", (uint8_t)txPulse);
+    _oled.setCursor(10, 28);
+    _oled.printf("发送:  0x%02X", (uint8_t)txPulse);
     
-    _oled.drawHLine(0, 32, 128);
-
-    _oled.setCursor(10, 46);
-    _oled.printf("接收脉冲:  0x%02X", rxByte);
+    _oled.setCursor(10, 44);
+    _oled.printf("接收:  0x%02X", rxByte);
     
-    _oled.setCursor(80, 52);
-    _oled.printf("#%u", rxCount);
-
-    _oled.drawHLine(0, 58, 128);
-    _oled.setCursor(20, 64);
-    _oled.print("按键返回菜单");
+    _oled.setCursor(10, 60);
+    _oled.printf("统计:  %u 字节", rxCount);
 }
 
 void OLEDDisplay::drawScan(int progress, bool finished, const bool* onlineStatus) {
     _oled.setFont(u8g2_font_wqy12_t_gb2312b);
     _oled.setCursor(0, 10);
-    _oled.print("> 正在扫描节点");
+    _oled.print("> 扫描节点");
     _oled.drawHLine(0, 12, 128);
 
+    // Moved grid down for better aesthetics (gridY 15 -> 22)
     int startX = 4;
-    int gridY = 15;
+    int gridY = 22;
     for (int i = 0; i < 20; i++) {
         int id = i + 1;
         int x = startX + (i * 6);
@@ -155,14 +204,13 @@ void OLEDDisplay::drawScan(int progress, bool finished, const bool* onlineStatus
         }
     }
 
-    _oled.setCursor(10, 35);
+    _oled.setCursor(10, 42); // Moved down accordingly
     if (!finished) {
-        _oled.printf("正在检查 ID: %d", progress);
-        _oled.drawFrame(10, 42, 108, 6);
-        _oled.drawBox(10, 42, (progress * 108 / 20), 6);
+        _oled.printf("检查 ID: %d", progress);
+        _oled.drawFrame(10, 50, 108, 6);
+        _oled.drawBox(10, 50, (progress * 108 / 20), 6);
     } else {
         _oled.print("扫描完成!");
-        _oled.setCursor(10, 55);
-        _oled.print("点击编码器返回");
+        // Removed return prompt as requested
     }
 }

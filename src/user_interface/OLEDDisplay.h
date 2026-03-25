@@ -16,11 +16,11 @@ public:
     void clear() override;
     void display() override;
     
-    void drawSplash() override;
+    void drawSplash(uint32_t elapsedMillis) override;
     void drawDashboard(const std::vector<float>& weights, float target, float tolerance, const String& status) override;
     void drawMenu(const String& title, const std::vector<String>& items, int cursorIndex, int scrollOffset) override;
     void drawNodeDetail(int id, float weight, bool online) override;
-    void drawParamEdit(const String& name, float value) override;
+    void drawParamEdit(const String& name, float value, float refValue, bool isMin) override;
     void drawRs485Diag(uint32_t txPulse, uint8_t rxByte, uint32_t rxCount) override;
     void drawScan(int progress, bool finished, const bool* onlineStatus) override;
     void drawAbout(const String& version, const String& buildDate) override;

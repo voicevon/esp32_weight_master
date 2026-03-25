@@ -26,11 +26,11 @@ void UserInterface::addDisplay(Display* display) {
 
 void UserInterface::setupMenuTree() {
     MenuNode* root = new MenuNode("主菜单");
-    MenuNode* diag = new MenuNode("诊断调试", root);
-    MenuNode* config = new MenuNode("参数设置", root);
+    MenuNode* diag = new MenuNode("诊断", root);
+    MenuNode* config = new MenuNode("设置", root);
 
     // 1. Dashboard (Main Monitoring)
-    root->addItem(MenuItem("1. 工作主屏", MENU_TYPE_ACTION, nullptr, [this](){
+    root->addItem(MenuItem("1. 仪表盘", MENU_TYPE_ACTION, nullptr, [this](){
         _currentMode = MODE_PRODUCTION;
         _state = SCREEN_MAIN;
     }));
@@ -46,14 +46,14 @@ void UserInterface::setupMenuTree() {
         _state = SCREEN_DETAIL;
         _selectedNode = 1;
     }));
-    diag->addItem(MenuItem("3. 物理总线测试", MENU_TYPE_ACTION, nullptr, [this](){
+    diag->addItem(MenuItem("3. 总线测试", MENU_TYPE_ACTION, nullptr, [this](){
         _currentMode = MODE_DIAG_PULSE;
         _state = SCREEN_RS485_DIAG;
         _diagRxCount = 0; // 重置接收计数
         _rs485->resetStats();
     }));
     diag->addItem(MenuItem("4. < 返回", MENU_TYPE_BACK));
-    root->addItem(MenuItem("2. 诊断调试", MENU_TYPE_SUBMENU, diag));
+    root->addItem(MenuItem("2. 诊断", MENU_TYPE_SUBMENU, diag));
 
     // 3. Configure Submenu
     config->addItem(MenuItem("1. 目标最小值", MENU_TYPE_ACTION, nullptr, [this](){
@@ -67,10 +67,10 @@ void UserInterface::setupMenuTree() {
         _editParamIdx = 1;
     }));
     config->addItem(MenuItem("3. < 返回", MENU_TYPE_BACK));
-    root->addItem(MenuItem("3. 系统设置", MENU_TYPE_SUBMENU, config));
+    root->addItem(MenuItem("3. 设置", MENU_TYPE_SUBMENU, config));
 
     // 4. About
-    root->addItem(MenuItem("4. 关于系统", MENU_TYPE_ACTION, nullptr, [this](){
+    root->addItem(MenuItem("4. 关于", MENU_TYPE_ACTION, nullptr, [this](){
         _currentMode = MODE_ABOUT;
         _state = SCREEN_MAIN;
     }));
@@ -102,8 +102,8 @@ void UserInterface::update(const std::vector<float>& weights, const String& stat
         d->clear();
         switch (_state) {
             case SCREEN_SPLASH:
-                d->drawSplash();
-                if (millis() - _stateStartTime > 2000) {
+                d->drawSplash(millis() - _stateStartTime);
+                if (millis() - _stateStartTime > 4000) {
                     _state = SCREEN_MAIN;
                 }
                 break;
@@ -126,8 +126,8 @@ void UserInterface::update(const std::vector<float>& weights, const String& stat
                 d->drawNodeDetail(_selectedNode, weights[_selectedNode-1], _rs485->isNodeOnline(_selectedNode));
                 break;
             case SCREEN_EDIT:
-                if (_editParamIdx == 0) d->drawParamEdit("Min Target", *_targetMin);
-                else d->drawParamEdit("Max Target", *_targetMax);
+                if (_editParamIdx == 0) d->drawParamEdit("最小值", *_targetMin, *_targetMax, true);
+                else d->drawParamEdit("最大值", *_targetMax, *_targetMin, false);
                 break;
             case SCREEN_RS485_DIAG:
                 d->drawRs485Diag(_diagTxByte, _diagRxByte, _diagRxCount);
