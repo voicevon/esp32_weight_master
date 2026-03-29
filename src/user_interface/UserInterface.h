@@ -36,6 +36,14 @@ private:
     uint32_t _diagRxCount = 0;
     unsigned long _lastPulseTime = 0;
 
+    // Scan Mode specific
+    std::vector<ScanRow> _scanHistory;
+    unsigned long _lastScanFinishTime = 0;
+    int _lastReportedProgress = 0;
+    float _currentScrollY = 0;
+    float _targetScrollY = 0;
+    uint32_t _totalScans = 0;
+
 public:
     static UserInterface* getInstance();
     void initialize(float* targetMin, float* targetMax, ModbusMaster* rs485);

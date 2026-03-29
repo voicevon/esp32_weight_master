@@ -95,8 +95,48 @@ void UserInterface::update(const std::vector<float>& weights, const String& stat
         }
     }
 
-    if (millis() - _lastUpdate < 50) return;
+    if (millis() - _lastUpdate < 30) return; // Slightly faster for smoother scrolling
     _lastUpdate = millis();
+
+    // 1. Scan Mode Logic (Auto-cycling and History)
+    if (_state == SCREEN_SCAN) {
+        int progress = _rs485->getScanProgress();
+        bool isScanning = _rs485->isScanning();
+
+        // Capture results when a scan cycle is COMPLETED
+        // We detect the transition from scanning to finished
+        bool scanJustFinished = (!isScanning && _lastScanFinishTime == 0 && progress >= 20);
+
+        if (scanJustFinished) {
+            _totalScans++;
+            ScanRow row;
+            const bool* currentStatus = _rs485->getOnlineStatusArray();
+            for (int id = 1; id <= 20; id++) {
+                row.online[id] = currentStatus[id];
+            }
+            _scanHistory.push_back(row);
+            
+            if (_scanHistory.size() > 50) _scanHistory.erase(_scanHistory.begin());
+            
+            // Adjust scroll target to keep the latest 4 rows in view
+            if (_scanHistory.size() > 4) {
+                _targetScrollY = (_scanHistory.size() - 4) * 12; // 12 is rowHeight in OLEDDisplay
+            }
+            
+            _lastScanFinishTime = millis(); // Mark as finished to prevent multiple captures
+        }
+
+        // Smooth scroll interpolation
+        _currentScrollY += (_targetScrollY - _currentScrollY) * 0.15f;
+
+        // Auto-restart scan loop (5 seconds after finish)
+        if (!isScanning) {
+            if (_lastScanFinishTime != 0 && millis() - _lastScanFinishTime > 5000) {
+                _rs485->startScan();
+                _lastScanFinishTime = 0;
+            }
+        }
+    }
 
     for (auto d : _displays) {
         d->clear();
@@ -133,7 +173,7 @@ void UserInterface::update(const std::vector<float>& weights, const String& stat
                 d->drawRs485Diag(_diagTxByte, _diagRxByte, _diagRxCount);
                 break;
             case SCREEN_SCAN:
-                d->drawScan(_rs485->getScanProgress(), !_rs485->isScanning(), _rs485->getOnlineStatusArray());
+                d->drawScan(_rs485->getScanProgress(), !_rs485->isScanning(), _scanHistory, _currentScrollY, _totalScans);
                 break;
         }
         d->display();

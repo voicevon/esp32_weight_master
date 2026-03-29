@@ -16,6 +16,7 @@
 float targetMin = 290.0f;
 float targetMax = 310.0f;
 std::vector<float> slaveWeights(NUM_SLAVES, 0.0f);
+std::vector<bool> slaveStable(NUM_SLAVES, false);
 String systemStatus = "INIT";
 bool isProductionActive = false;
 
@@ -52,6 +53,7 @@ void controlTask(void* pvParameters) {
             xSemaphoreTake(mutexWeights, portMAX_DELAY);
             for (int i = 0; i < NUM_SLAVES; i++) {
                 slaveWeights[i] = rs485.getWeight(i + 1);
+                slaveStable[i] = rs485.isStable(i + 1);
             }
             xSemaphoreGive(mutexWeights);
         }
@@ -76,7 +78,18 @@ void controlTask(void* pvParameters) {
                 lastCalcTime = millis();
                 
                 engine.setTargetRange(currentMin, currentMax);
-                CombinationResult res = engine.findBestCombination(slaveWeights);
+                
+                // 仅将稳定的重量参与组合计算
+                std::vector<float> stableWeightsForEngine(NUM_SLAVES, 0.0f);
+                for (int i = 0; i < NUM_SLAVES; i++) {
+                    if (slaveStable[i]) {
+                        stableWeightsForEngine[i] = slaveWeights[i];
+                    } else {
+                        stableWeightsForEngine[i] = -10000.0f; // 标记为极其巨大的负数，确保不被选中
+                    }
+                }
+                
+                CombinationResult res = engine.findBestCombination(stableWeightsForEngine);
                 
                 if (res.success) {
                     // 进入落料流程
@@ -84,9 +97,25 @@ void controlTask(void* pvParameters) {
                     systemStatus = "DISCHARGING";
                     xSemaphoreGive(mutexStatus);
 
-                    // 同步执行硬件动作 (此时 Modbus 被主控逻辑独占)
+                    // 1. 发起开门指令
                     for (int id : res.selectedIndices) rs485.openDischarge(id);
-                    vTaskDelay(pdMS_TO_TICKS(800));
+                    
+                    // 2. 等待所有选中的从机反馈“开门结束” (Wait for DoorPhase == 3)
+                    unsigned long dischargeStart = millis();
+                    bool allDone = false;
+                    while (!allDone && (millis() - dischargeStart < 3000)) { // 3s 超时保护
+                        allDone = true;
+                        rs485.update(); // 持续推动 Modbus 轮询最新状态
+                        for (int id : res.selectedIndices) {
+                            if (rs485.getDoorPhase(id) != 3) {
+                                allDone = false;
+                                break;
+                            }
+                        }
+                        vTaskDelay(pdMS_TO_TICKS(10));
+                    }
+
+                    // 3. 执行关门与去皮
                     for (int id : res.selectedIndices) {
                         rs485.closeDischarge(id);
                         rs485.tare(id);

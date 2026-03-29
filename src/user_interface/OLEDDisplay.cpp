@@ -2,7 +2,7 @@
 #include "splash_image.h"
 
 void OLEDDisplay::begin() {
-    _oled.begin();
+    // Note: _oled.begin() is already called in main.cpp
     _oled.enableUTF8Print(); // 启用 UTF8 支持以显示中文
 }
 
@@ -67,8 +67,6 @@ void OLEDDisplay::drawSplash(uint32_t elapsedMillis) {
     if (elapsedMillis > 1000) {
         _oled.drawXBMP(0, y2 - 12, 128, 24, splash_line2);
     }
-    
-    _oled.sendBuffer();
 }
 
 void OLEDDisplay::drawDashboard(const std::vector<float>& weights, float target, float tolerance, const String& status) {
@@ -186,31 +184,56 @@ void OLEDDisplay::drawRs485Diag(uint32_t txPulse, uint8_t rxByte, uint32_t rxCou
     _oled.printf("统计:  %u 字节", rxCount);
 }
 
-void OLEDDisplay::drawScan(int progress, bool finished, const bool* onlineStatus) {
+void OLEDDisplay::drawScan(int currentId, bool finished, const std::vector<ScanRow>& history, float scrollY, uint32_t scanCount) {
     _oled.setFont(u8g2_font_wqy12_t_gb2312b);
     _oled.setCursor(0, 10);
-    _oled.print("> 扫描节点");
+    _oled.printf("> 扫描次数: %u", scanCount);
     _oled.drawHLine(0, 12, 128);
 
-    // Moved grid down for better aesthetics (gridY 15 -> 22)
-    int startX = 4;
-    int gridY = 22;
-    for (int i = 0; i < 20; i++) {
-        int id = i + 1;
-        int x = startX + (i * 6);
-        _oled.drawFrame(x, gridY, 5, 8);
-        if (onlineStatus[id]) {
-            _oled.drawBox(x + 1, gridY + 1, 3, 6);
+    int rowHeight = 12;
+    int areaStartY = 14; 
+    int startX = 0;
+
+    for (int i = 0; i < (int)history.size(); i++) {
+        const auto& row = history[i];
+        // Baselines for 4 rows: 26, 38, 50, 62
+        int y = areaStartY + rowHeight - (int)scrollY + (i * rowHeight);
+
+        // Visibility Check: Top of box (y-9) must be strictly below header line (12)
+        // y - 9 > 12  =>  y > 21
+        if (y > 21 && y < 65) {
+            for (int b = 0; b < 20; b++) {
+                int groupIdx = b / 5;
+                int intraIdx = b % 5;
+                int x = startX + (groupIdx * 33) + (intraIdx * 6);
+                int by = y - 9;
+                
+                if (row.online[b + 1]) {
+                    // Online: Solid frame + solid inner box
+                    _oled.drawFrame(x, by, 4, 9);
+                    _oled.drawBox(x + 1, by + 1, 2, 7);
+                } else {
+                    // Offline: Dashed/Dotted frame
+                    // Top & Bottom (alternate pixels)
+                    _oled.drawPixel(x, by); _oled.drawPixel(x + 2, by);
+                    _oled.drawPixel(x, by + 8); _oled.drawPixel(x + 2, by + 8);
+                    // Left & Right (alternate pixels)
+                    for (int dy = 0; dy < 9; dy += 2) {
+                        _oled.drawPixel(x, by + dy);
+                        _oled.drawPixel(x + 3, by + dy);
+                    }
+                }
+            }
         }
     }
 
-    _oled.setCursor(10, 42); // Moved down accordingly
+    // Status indicator at top right
+    _oled.setFont(u8g2_font_6x10_tf);
     if (!finished) {
-        _oled.printf("检查 ID: %d", progress);
-        _oled.drawFrame(10, 50, 108, 6);
-        _oled.drawBox(10, 50, (progress * 108 / 20), 6);
+        _oled.setCursor(110, 10);
+        _oled.printf("%02d", currentId);
     } else {
-        _oled.print("扫描完成!");
-        // Removed return prompt as requested
+        _oled.setCursor(98, 10);
+        _oled.print("DONE");
     }
 }

@@ -18,6 +18,8 @@ public:
 
     // 获取缓存数据（非阻塞）
     float getWeight(int id);
+    bool isStable(int id);
+    uint8_t getDoorPhase(int id);
     bool isNodeOnline(int id);
     const bool* getOnlineStatusArray() const { return _onlineStatus; }
 
@@ -47,12 +49,17 @@ private:
     unsigned long _lastPollTime = 0;
     
     float _cachedWeights[21]; // 索引 1-20
+    bool _isStable[21];
+    uint8_t _doorPhases[21];
     bool _onlineStatus[21];
-    uint16_t _tempRegs[2];     // 用于接收 32bit Float 的临时缓冲区
+    uint16_t _tempRegs[3];     // 接收 32bit Float (2) + 16bit Status (1)
     
     // 统计项
     uint32_t _packetsSent = 0;
     uint32_t _packetsDropped = 0;
+    uint8_t _failCounters[21];       // Consecutive failures per node
+    uint32_t _nodeErrorStats[21];    // Cumulative errors per node
+    Modbus::ResultCode _nodeLastResult[21]; // Latest error code per node
 
     bool _isScanning = false;
     int _scanProgress = 0;

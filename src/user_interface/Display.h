@@ -4,6 +4,10 @@
 #include <Arduino.h>
 #include <vector>
 
+struct ScanRow {
+    bool online[21]; // Indices 1-20
+};
+
 /**
  * @brief 显示输出抽象基类
  */
@@ -22,7 +26,7 @@ public:
     virtual void drawNodeDetail(int id, float weight, bool online) = 0;
     virtual void drawParamEdit(const String& label, float value, float refValue, bool isMin) = 0;
     virtual void drawRs485Diag(uint32_t txPulse, uint8_t rxByte, uint32_t rxCount) = 0;
-    virtual void drawScan(int progress, bool finished, const bool* onlineStatus) = 0;
+    virtual void drawScan(int currentId, bool finished, const std::vector<ScanRow>& history, float scrollY, uint32_t scanCount) = 0;
     virtual void drawAbout(const String& version, const String& buildDate) = 0;
 };
 

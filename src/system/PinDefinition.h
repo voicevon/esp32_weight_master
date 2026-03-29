@@ -12,7 +12,7 @@
 
 // --- RS485 通信 (Serial 2) ---
 #define PIN_RS485_RX     16
-#define PIN_RS485_TX     4
+#define PIN_RS485_TX     17
 #define PIN_RS485_TX_EN  5     // 逻辑：HIGH 为发送，LOW 为接收
 #define RS485_TX_ENABLE  HIGH 
 #define RS485_RX_ENABLE  LOW  

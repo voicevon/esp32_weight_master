@@ -13,7 +13,12 @@ ModbusMaster::ModbusMaster(int rxPin, int txPin, int enPin, long baud)
     _instance = this;
     for (int i = 0; i < 21; i++) {
         _cachedWeights[i] = 0.0f;
+        _isStable[i] = false;
+        _doorPhases[i] = 0;
         _onlineStatus[i] = false;
+        _failCounters[i] = 0;
+        _nodeErrorStats[i] = 0;
+        _nodeLastResult[i] = Modbus::EX_SUCCESS;
     }
 }
 
@@ -34,13 +39,20 @@ void ModbusMaster::update() {
     // 如果当前正在等待响应，且未超时，则直接返回
     if (_isWaiting) {
         if (millis() - _lastPollTime > 200) { // 200ms 防卡死超时
-            Serial.printf("[MASTER] !! Timeout for ID: %d\n", _isScanning ? _scanProgress : _currentPollId);
+            uint8_t id = _isScanning ? _scanProgress : _currentPollId;
+            Serial.printf("[MODBUS] !! Timeout for ID: %d (Strike: 1/1)\n", id);
+            
+            _failCounters[id]++;
+            _nodeErrorStats[id]++;
+            _nodeLastResult[id] = Modbus::EX_TIMEOUT;
+
+            if (_onlineStatus[id]) Serial.printf("[MODBUS] ID:%02d Status -> OFFLINE\n", id);
+            _onlineStatus[id] = false;
+
             if (_isScanning) {
-                _onlineStatus[_scanProgress] = false;
                 if (_scanProgress >= 20) _isScanning = false;
                 else _scanProgress++;
             } else {
-                _onlineStatus[_currentPollId] = false;
                 _currentPollId = (_currentPollId % 20) + 1;
             }
             _isWaiting = false;
@@ -55,11 +67,12 @@ void ModbusMaster::update() {
     
     if (_isScanning) {
         // 扫描模式：尝试读取权重寄存器，只为确认存在
-        Serial.printf("[MASTER] ++ Scanning ID: %d\n", _scanProgress);
+        Serial.printf("[MODBUS] ++ Scanning ID: %d\n", _scanProgress);
         _mb.readHreg(_scanProgress, REG_WEIGHT_H, _tempRegs, 2, cbPoll);
     } else {
-        Serial.printf("[MASTER] >> Polling ID: %d\n", _currentPollId);
-        _mb.readHreg(_currentPollId, REG_WEIGHT_H, _tempRegs, 2, cbPoll);
+        Serial.printf("[MODBUS] >> Polling ID: %d\n", _currentPollId);
+        // 读取 3 个寄存器：Weight (2) + Status (1)
+        _mb.readHreg(_currentPollId, REG_WEIGHT_H, _tempRegs, 3, cbPoll);
     }
 }
 
@@ -74,19 +87,41 @@ void ModbusMaster::startScan() {
 // 静态回调：数据接收到位后在此处更新缓存
 bool ModbusMaster::cbPoll(Modbus::ResultCode event, uint16_t transactionId, void* data) {
     ModbusMaster* instance = _instance;
-    
     uint8_t id = instance->_isScanning ? instance->_scanProgress : instance->_currentPollId;
 
     if (event == Modbus::EX_SUCCESS) {
+        if (!instance->_onlineStatus[id]) {
+            Serial.printf("[MODBUS] ID:%02d RECOVERED.\n", id);
+        }
+        instance->_onlineStatus[id] = true;
+        instance->_failCounters[id] = 0;
+        instance->_nodeLastResult[id] = event;
+
         FloatConverter conv;
         conv.r[0] = instance->_tempRegs[0];
         conv.r[1] = instance->_tempRegs[1];
         
         instance->_cachedWeights[id] = conv.f;
-        instance->_onlineStatus[id] = true;
+
+        if (!instance->_isScanning) {
+            // 解析状态寄存器 (REG_STATUS)
+            uint16_t status = instance->_tempRegs[2];
+            instance->_isStable[id] = (status >> 8) & 0x01;
+            instance->_doorPhases[id] = (status >> 9) & 0x07;
+        }
     } else {
+        instance->_packetsDropped++;
+        instance->_failCounters[id]++;
+        instance->_nodeErrorStats[id]++;
+        instance->_nodeLastResult[id] = event;
+
+        // Log error with codes (E4=Timeout, E7=CRC, etc)
+        Serial.printf("[MODBUS] ID:%02d Error: 0x%02X (Strike: 1/1)\n", id, (int)event);
+
+        if (instance->_onlineStatus[id]) {
+            Serial.printf("[MODBUS] ID:%02d Status CHANGED -> OFFLINE\n", id);
+        }
         instance->_onlineStatus[id] = false;
-        instance->_packetsDropped++; // 记录丢包
     }
 
     if (instance->_isScanning) {
@@ -112,6 +147,16 @@ float ModbusMaster::getWeight(int id) {
 bool ModbusMaster::isNodeOnline(int id) {
     if (id < 1 || id > 20) return false;
     return _onlineStatus[id];
+}
+
+bool ModbusMaster::isStable(int id) {
+    if (id < 1 || id > 20) return false;
+    return _isStable[id];
+}
+
+uint8_t ModbusMaster::getDoorPhase(int id) {
+    if (id < 1 || id > 20) return 0;
+    return _doorPhases[id];
 }
 
 // ---------------------------
