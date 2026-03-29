@@ -2,7 +2,7 @@
 
 UserInterface* UserInterface::instance = nullptr;
 
-UserInterface::UserInterface() : _state(SCREEN_SPLASH), _stateStartTime(millis()) {}
+UserInterface::UserInterface() : _state(SCREEN_SPLASH), _stateStartTime(millis()), _currentMode(MODE_PRODUCTION) {}
 
 UserInterface* UserInterface::getInstance() {
     if (!instance) instance = new UserInterface();
@@ -78,7 +78,7 @@ void UserInterface::setupMenuTree() {
     _menu.setRootMenu(root);
 }
 
-void UserInterface::update(const std::vector<float>& weights, const String& status) {
+void UserInterface::update(const std::vector<float>& weights, float stableSum, float unstableSum, float totalSum, float accumulatedWeight, const String& status) {
     handleInput();
     
     // RS485 诊断屏幕下的 1Hz 脉冲与 RX 监听逻辑
@@ -105,7 +105,7 @@ void UserInterface::update(const std::vector<float>& weights, const String& stat
 
         // Capture results when a scan cycle is COMPLETED
         // We detect the transition from scanning to finished
-        bool scanJustFinished = (!isScanning && _lastScanFinishTime == 0 && progress >= 20);
+        bool scanJustFinished = (!isScanning && _lastScanFinishTime == 0 && progress >= 20); // 恢复全量扫描 1-20
 
         if (scanJustFinished) {
             _totalScans++;
@@ -151,8 +151,7 @@ void UserInterface::update(const std::vector<float>& weights, const String& stat
                 if (_currentMode == MODE_ABOUT) {
                     d->drawAbout("v1.3.0", __DATE__);
                 } else {
-                    String modeTag = (_currentMode == MODE_PRODUCTION) ? "[RUN]" : "[IDLE]";
-                    d->drawDashboard(weights, *_targetMin, *_targetMax - *_targetMin, modeTag + " " + status);
+                    d->drawDashboard(weights, stableSum, unstableSum, totalSum, accumulatedWeight, *_targetMin, *_targetMax - *_targetMin, status);
                 }
                 break;
             case SCREEN_MENU: {

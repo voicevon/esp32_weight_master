@@ -69,35 +69,61 @@ void OLEDDisplay::drawSplash(uint32_t elapsedMillis) {
     }
 }
 
-void OLEDDisplay::drawDashboard(const std::vector<float>& weights, float target, float tolerance, const String& status) {
+void OLEDDisplay::drawDashboard(const std::vector<float>& weights, float stableSum, float unstableSum, float totalSum, float accumulatedWeight, float target, float tolerance, const String& status) {
     _oled.setFont(u8g2_font_wqy12_t_gb2312b);
+    
+    // 1. Total Weight (Top Left)
     _oled.setCursor(0, 10);
-    _oled.print("状态: ");
-    _oled.print(status);
+    _oled.printf("Σ:%dg", (int)(totalSum + 0.5f));
 
-    _oled.setFont(u8g2_font_logisoso18_tn);
-    _oled.setCursor(0, 34);
-    _oled.printf("%.1f", target);
+    // 2. Unstable Weight (Top Right)
+    String unsStr = "U:" + String((int)(unstableSum + 0.5f)) + "g";
+    int unsWidth = _oled.getUTF8Width(unsStr.c_str());
+    _oled.setCursor(128 - unsWidth - 2, 10);
+    _oled.print(unsStr);
+
+    // 3. Stable Weight (Center-Top - Large)
+    _oled.setFont(u8g2_font_logisoso24_tn);
+    int weightWidth = _oled.getStrWidth(String((int)(stableSum + 0.5f)).c_str());
+    _oled.setCursor(64 - (weightWidth / 2) - 4, 34);
+    _oled.printf("%d", (int)(stableSum + 0.5f));
     _oled.setFont(u8g2_font_wqy12_t_gb2312b);
     _oled.print("g");
 
-    _oled.setCursor(85, 30);
-    _oled.printf("+/-%.1f", tolerance);
-    
-    _oled.drawFrame(0, 38, 128, 1); // 模拟原有的 line
+    // 4. Bar Graph (Bottom)
     drawBarGraph(weights, target);
 }
 
 void OLEDDisplay::drawBarGraph(const std::vector<float>& weights, float target) {
     int marginX = 4;
+    int graphWidth = 120;
+    int maxHeight = 30;
     int bottomY = 63;
-    int maxHeight = 20;
+    int barWidth = 4;
+    int spacing = 6;
+
+    // Draw target reference line (dashed/dotted looks cleaner)
+    if (target > 0) {
+        for (int x = 0; x < 128; x += 4) {
+            _oled.drawHLine(x, bottomY - maxHeight, 2);
+        }
+    }
+
     for (int i = 0; i < (int)weights.size(); i++) {
-        float ratio = target > 0 ? (weights[i] / target) : 0;
+        // Use a relative ratio based on target or a fixed scale (e.g. 1000g)
+        float displayMax = (target > 0) ? target * 1.5f : 1000.0f;
+        float ratio = weights[i] / displayMax;
+        
         int h = (int)(ratio * maxHeight);
         if (h > maxHeight) h = maxHeight;
-        int x = marginX + (i * 6);
-        _oled.drawBox(x, bottomY - h, 4, h);
+        if (h < 0) h = 0;
+
+        int x = marginX + (i * spacing);
+        
+        // Solid bar for weight
+        _oled.drawBox(x, bottomY - h, barWidth, h);
+        
+        // Small indicator if this bin is selected (if we had that info, not available yet)
     }
 }
 

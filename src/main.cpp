@@ -18,6 +18,8 @@ float targetMax = 310.0f;
 std::vector<float> slaveWeights(NUM_SLAVES, 0.0f);
 std::vector<bool> slaveStable(NUM_SLAVES, false);
 String systemStatus = "INIT";
+float lastCombinedWeight = 0.0f;
+float accumulatedTotalWeight = 0.0f;
 bool isProductionActive = false;
 
 SemaphoreHandle_t mutexParams; // 保护 targetMin/Max 和生产开关
@@ -91,10 +93,16 @@ void controlTask(void* pvParameters) {
                 
                 CombinationResult res = engine.findBestCombination(stableWeightsForEngine);
                 
+                // Live preview: always update lastCombinedWeight if in READY state
+                xSemaphoreTake(mutexStatus, portMAX_DELAY);
+                lastCombinedWeight = res.success ? res.totalWeight : 0.0f; 
+                xSemaphoreGive(mutexStatus);
+
                 if (res.success) {
                     // 进入落料流程
                     xSemaphoreTake(mutexStatus, portMAX_DELAY);
                     systemStatus = "DISCHARGING";
+                    accumulatedTotalWeight += res.totalWeight;
                     xSemaphoreGive(mutexStatus);
 
                     // 1. 发起开门指令
@@ -157,16 +165,29 @@ void uiTask(void* pvParameters) {
         // 2. 刷新显示 (核心 0 专属 IO 操作)
         std::vector<float> localWeights(NUM_SLAVES);
         String localStatus;
+        float stableSum = 0.0f;
+        float unstableSum = 0.0f;
         
         xSemaphoreTake(mutexWeights, portMAX_DELAY);
         localWeights = slaveWeights;
+        for (int i = 0; i < NUM_SLAVES; i++) {
+            if (slaveStable[i]) {
+                stableSum += slaveWeights[i];
+            } else {
+                unstableSum += slaveWeights[i];
+            }
+        }
         xSemaphoreGive(mutexWeights);
 
         xSemaphoreTake(mutexStatus, portMAX_DELAY);
         localStatus = systemStatus;
+        // 如果处于 READY 状态，显示所有稳定斗的实时总和；否则显示上一批次的组合重量
+        float displayStable = (localStatus == "READY") ? stableSum : lastCombinedWeight;
+        float totalSum = stableSum + unstableSum;
+        float localAccumulatedWeight = accumulatedTotalWeight;
         xSemaphoreGive(mutexStatus);
 
-        UserInterface::getInstance()->update(localWeights, localStatus);
+        UserInterface::getInstance()->update(localWeights, displayStable, unstableSum, totalSum, localAccumulatedWeight, localStatus);
 
         vTaskDelay(pdMS_TO_TICKS(33)); // 约 30FPS 刷新率
     }

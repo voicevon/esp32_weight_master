@@ -38,7 +38,7 @@ void ModbusMaster::update() {
 
     // 如果当前正在等待响应，且未超时，则直接返回
     if (_isWaiting) {
-        if (millis() - _lastPollTime > 200) { // 200ms 防卡死超时
+        if (millis() - _lastPollTime > 1500) { // 1500ms 诊断专用超时
             uint8_t id = _isScanning ? _scanProgress : _currentPollId;
             Serial.printf("[MODBUS] !! Timeout for ID: %d (Strike: 1/1)\n", id);
             
@@ -50,10 +50,10 @@ void ModbusMaster::update() {
             _onlineStatus[id] = false;
 
             if (_isScanning) {
-                if (_scanProgress >= 20) _isScanning = false;
+                if (_scanProgress >= 20) _isScanning = false; // 恢复全量扫描 1-20
                 else _scanProgress++;
             } else {
-                _currentPollId = (_currentPollId % 20) + 1;
+                _currentPollId = (_currentPollId % 20) + 1; // 恢复全量轮询 1-20
             }
             _isWaiting = false;
         }
@@ -125,14 +125,14 @@ bool ModbusMaster::cbPoll(Modbus::ResultCode event, uint16_t transactionId, void
     }
 
     if (instance->_isScanning) {
-        if (instance->_scanProgress >= 20) {
+        if (instance->_scanProgress >= 20) { // 恢复全量扫描 1-20
             instance->_isScanning = false; 
             Serial.println("[DIAG] Scan Complete.");
         } else {
             instance->_scanProgress++;
         }
     } else {
-        instance->_currentPollId = (instance->_currentPollId % 20) + 1;
+        instance->_currentPollId = (instance->_currentPollId % 20) + 1; // 恢复全量轮询 1-20
     }
     
     instance->_isWaiting = false;
