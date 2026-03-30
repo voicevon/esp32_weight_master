@@ -194,6 +194,28 @@ void OLEDDisplay::drawAbout(const String& version, const String& buildDate) {
     _oled.print("2026年4月");
 }
 
+void OLEDDisplay::drawMessage(const String& msg) {
+    _oled.setFont(u8g2_font_wqy12_t_gb2312);
+    int width = _oled.getUTF8Width(msg.c_str());
+    _oled.drawFrame(10, 20, 108, 24);
+    _oled.setCursor(64 - width / 2, 36);
+    _oled.print(msg);
+}
+
+void OLEDDisplay::drawSequentialProgress(const String& label, int current, int total) {
+    _oled.setFont(u8g2_font_wqy12_t_gb2312);
+    int labelWidth = _oled.getUTF8Width(label.c_str());
+    _oled.setCursor(64 - labelWidth / 2, 25);
+    _oled.print(label);
+    
+    _oled.drawFrame(20, 35, 88, 10);
+    int barWidth = (current * 84) / total;
+    _oled.drawBox(22, 37, barWidth, 6);
+    
+    _oled.setCursor(55, 60);
+    _oled.print(current); _oled.print("/"); _oled.print(total);
+}
+
 void OLEDDisplay::drawRs485Diag(uint32_t txPulse, uint8_t rxByte, uint32_t rxCount) {
     _oled.setFont(u8g2_font_wqy12_t_gb2312b);
     _oled.setCursor(0, 10);

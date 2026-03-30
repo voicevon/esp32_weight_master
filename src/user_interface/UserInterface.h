@@ -26,6 +26,7 @@ private:
     // System pointers
     float* _targetMin;
     float* _targetMax;
+    float* _accumulatedTotalWeight; // 控制累计重量归零
     ModbusMaster* _rs485;
 
     // Detail/Edit context
@@ -35,6 +36,14 @@ private:
     uint8_t _diagRxByte = 0;
     uint32_t _diagRxCount = 0;
     unsigned long _lastPulseTime = 0;
+
+    // UI Feedback
+    String _messageBoxText = "";
+    unsigned long _messageTimer = 0;
+    int _sequentialProgress = 0;
+    int _currentSequentialCmd = 0; // 1:开, 2:关, 3:置零
+    String _sequentialLabel = "";
+    unsigned long _lastSequentialStepTime = 0;
 
     // Scan Mode specific
     std::vector<ScanRow> _scanHistory;
@@ -46,7 +55,7 @@ private:
 
 public:
     static UserInterface* getInstance();
-    void initialize(float* targetMin, float* targetMax, ModbusMaster* rs485);
+    void initialize(float* targetMin, float* targetMax, float* accumulatedTotalWeight, ModbusMaster* rs485);
     void addDisplay(Display* display);
     
     void update(const std::vector<float>& weights, float stableSum, float unstableSum, float totalSum, float accumulatedWeight, const String& status);

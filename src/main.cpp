@@ -213,7 +213,7 @@ void setup() {
         Serial.println(F("U8g2 initialization failed"));
     }
     display.enableUTF8Print(); // Enable UTF8 for Chinese support
-    UserInterface::getInstance()->initialize(&targetMin, &targetMax, &rs485);
+    UserInterface::getInstance()->initialize(&targetMin, &targetMax, &accumulatedTotalWeight, &rs485);
     UserInterface::getInstance()->addDisplay(new OLEDDisplay(display));
 
     // 初始化硬件

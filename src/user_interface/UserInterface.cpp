@@ -9,11 +9,12 @@ UserInterface* UserInterface::getInstance() {
     return instance;
 }
 
-void UserInterface::initialize(float* targetMin, float* targetMax, ModbusMaster* rs485) {
+void UserInterface::initialize(float* targetMin, float* targetMax, float* accumulatedTotalWeight, ModbusMaster* rs485) {
     Encoder::getInstance()->initialize();
     
     _targetMin = targetMin;
     _targetMax = targetMax;
+    _accumulatedTotalWeight = accumulatedTotalWeight;
     _rs485 = rs485;
     
     setupMenuTree();
@@ -26,48 +27,84 @@ void UserInterface::addDisplay(Display* display) {
 
 void UserInterface::setupMenuTree() {
     MenuNode* root = new MenuNode("主菜单");
-    MenuNode* diag = new MenuNode("诊断", root);
-    MenuNode* config = new MenuNode("设置", root);
+    MenuNode* commands = new MenuNode("系统命令", root);
+    MenuNode* diagConfig = new MenuNode("诊断与设置", root);
 
-    // 1. Dashboard (Main Monitoring)
+    // 1. Dashboard
     root->addItem(MenuItem("1. 仪表盘", MENU_TYPE_ACTION, nullptr, [this](){
         _currentMode = MODE_PRODUCTION;
         _state = SCREEN_MAIN;
     }));
 
-    // 2. Diagnosis Submenu
-    diag->addItem(MenuItem("1. 扫描节点", MENU_TYPE_ACTION, nullptr, [this](){
+    // 2. System Commands Submenu
+    commands->addItem(MenuItem("1. 全局置零", MENU_TYPE_ACTION, nullptr, [this](){
+        _rs485->broadcastTare();
+        _messageBoxText = "广播置零指令已发送";
+        _messageTimer = millis();
+        _state = SCREEN_MESSAGE;
+    }));
+    commands->addItem(MenuItem("2. 逐个置零", MENU_TYPE_ACTION, nullptr, [this](){
+        _currentMode = MODE_SEQUENTIAL_CTRL;
+        _state = SCREEN_SEQUENTIAL_PROGRESS;
+        _sequentialProgress = 0;
+        _currentSequentialCmd = 3;
+        _sequentialLabel = "正在逐个置零...";
+        _lastSequentialStepTime = millis();
+    }));
+    commands->addItem(MenuItem("3. 逐个打开", MENU_TYPE_ACTION, nullptr, [this](){
+        _currentMode = MODE_SEQUENTIAL_CTRL;
+        _state = SCREEN_SEQUENTIAL_PROGRESS;
+        _sequentialProgress = 0;
+        _currentSequentialCmd = 1;
+        _sequentialLabel = "正在逐个打开...";
+        _lastSequentialStepTime = millis();
+    }));
+    commands->addItem(MenuItem("4. 逐个关闭", MENU_TYPE_ACTION, nullptr, [this](){
+        _currentMode = MODE_SEQUENTIAL_CTRL;
+        _state = SCREEN_SEQUENTIAL_PROGRESS;
+        _sequentialProgress = 0;
+        _currentSequentialCmd = 2;
+        _sequentialLabel = "正在逐个关闭...";
+        _lastSequentialStepTime = millis();
+    }));
+    commands->addItem(MenuItem("5. 清除累计", MENU_TYPE_ACTION, nullptr, [this](){
+        if (_accumulatedTotalWeight) *_accumulatedTotalWeight = 0;
+        _messageBoxText = "累计重量已清零";
+        _messageTimer = millis();
+        _state = SCREEN_MESSAGE;
+    }));
+    commands->addItem(MenuItem("6. < 返回", MENU_TYPE_BACK));
+    root->addItem(MenuItem("2. 系统命令", MENU_TYPE_SUBMENU, commands));
+
+    // 3. Diagnosis & Configuration Submenu
+    diagConfig->addItem(MenuItem("1. 扫描节点", MENU_TYPE_ACTION, nullptr, [this](){
         _currentMode = MODE_DIAG_SCAN;
         _state = SCREEN_SCAN;
         _rs485->startScan();
     }));
-    diag->addItem(MenuItem("2. 节点状态", MENU_TYPE_ACTION, nullptr, [this](){
+    diagConfig->addItem(MenuItem("2. 节点状态", MENU_TYPE_ACTION, nullptr, [this](){
         _currentMode = MODE_DIAG_DETAIL;
         _state = SCREEN_DETAIL;
         _selectedNode = 1;
     }));
-    diag->addItem(MenuItem("3. 总线测试", MENU_TYPE_ACTION, nullptr, [this](){
+    diagConfig->addItem(MenuItem("3. 总线测试", MENU_TYPE_ACTION, nullptr, [this](){
         _currentMode = MODE_DIAG_PULSE;
         _state = SCREEN_RS485_DIAG;
-        _diagRxCount = 0; // 重置接收计数
+        _diagRxCount = 0;
         _rs485->resetStats();
     }));
-    diag->addItem(MenuItem("4. < 返回", MENU_TYPE_BACK));
-    root->addItem(MenuItem("2. 诊断", MENU_TYPE_SUBMENU, diag));
-
-    // 3. Configure Submenu
-    config->addItem(MenuItem("1. 目标最小值", MENU_TYPE_ACTION, nullptr, [this](){
+    diagConfig->addItem(MenuItem("4. 目标最低值", MENU_TYPE_ACTION, nullptr, [this](){
         _currentMode = MODE_CONFIGURATION;
         _state = SCREEN_EDIT;
         _editParamIdx = 0;
     }));
-    config->addItem(MenuItem("2. 目标最大值", MENU_TYPE_ACTION, nullptr, [this](){
+    diagConfig->addItem(MenuItem("5. 目标最高值", MENU_TYPE_ACTION, nullptr, [this](){
         _currentMode = MODE_CONFIGURATION;
         _state = SCREEN_EDIT;
         _editParamIdx = 1;
     }));
-    config->addItem(MenuItem("3. < 返回", MENU_TYPE_BACK));
-    root->addItem(MenuItem("3. 设置", MENU_TYPE_SUBMENU, config));
+    diagConfig->addItem(MenuItem("6. < 返回", MENU_TYPE_BACK));
+    root->addItem(MenuItem("3. 诊断与设置", MENU_TYPE_SUBMENU, diagConfig));
 
     // 4. About
     root->addItem(MenuItem("4. 关于", MENU_TYPE_ACTION, nullptr, [this](){
@@ -138,6 +175,40 @@ void UserInterface::update(const std::vector<float>& weights, float stableSum, f
         }
     }
 
+    // 2. Sequential Action Logic (State-Driven & Whitelist-Aware)
+    if (_state == SCREEN_SEQUENTIAL_PROGRESS) {
+        // 如果当前 Modbus 正在忙碌（发送或等待），则不进行下一步
+        if (_rs485->getStatus() == ModbusMaster::ST_IDLE) {
+            bool foundNext = false;
+            while (_sequentialProgress < 20) {
+                _sequentialProgress++;
+                if (_rs485->isWhitelisted(_sequentialProgress)) {
+                    foundNext = true;
+                    break;
+                }
+            }
+            
+            if (foundNext) {
+                // 核心规则：仅对白名单中的节点发起指令
+                if (_currentSequentialCmd == 1) _rs485->openDischarge(_sequentialProgress);
+                else if (_currentSequentialCmd == 2) _rs485->closeDischarge(_sequentialProgress);
+                else if (_currentSequentialCmd == 3) _rs485->tare(_sequentialProgress);
+                
+                _lastSequentialStepTime = millis();
+            } else {
+                // 全部节点扫描/执行完毕
+                _messageBoxText = "操作已全部完成";
+                _messageTimer = millis();
+                _state = SCREEN_MESSAGE;
+            }
+        }
+    }
+
+    // 3. Status Polling Push
+    if (_currentMode == MODE_SEQUENTIAL_CTRL || _state == SCREEN_SEQUENTIAL_PROGRESS) {
+        _rs485->update(); // Ensure communication flows during these operations
+    }
+
     for (auto d : _displays) {
         d->clear();
         switch (_state) {
@@ -173,6 +244,15 @@ void UserInterface::update(const std::vector<float>& weights, float stableSum, f
                 break;
             case SCREEN_SCAN:
                 d->drawScan(_rs485->getScanProgress(), !_rs485->isScanning(), _scanHistory, _currentScrollY, _totalScans);
+                break;
+            case SCREEN_MESSAGE:
+                d->drawMessage(_messageBoxText);
+                if (millis() - _messageTimer > 2000) { // Auto-return after 2s
+                    _state = SCREEN_MENU;
+                }
+                break;
+            case SCREEN_SEQUENTIAL_PROGRESS:
+                d->drawSequentialProgress(_sequentialLabel, _sequentialProgress, 20);
                 break;
         }
         d->display();
@@ -218,8 +298,29 @@ void UserInterface::handleInput() {
             }
             break;
         case SCREEN_SCAN:
-            if (clicked && !_rs485->isScanning()) {
+            if (clicked) {
+                if (_rs485->isScanning()) {
+                    _rs485->stopScan();
+                    _currentMode = MODE_IDLE;
+                    _state = SCREEN_MENU;
+                } else {
+                    _rs485->savePollWhitelist();
+                    _messageBoxText = "扫描结果已保存并生效";
+                    _messageTimer = millis();
+                    _state = SCREEN_MESSAGE;
+                }
+            }
+            break;
+        case SCREEN_MESSAGE:
+            if (clicked || delta != 0) {
                 _state = SCREEN_MENU;
+            }
+            break;
+        case SCREEN_SEQUENTIAL_PROGRESS:
+            // Cannot escape easily until done or button clicked
+            if (clicked) {
+                _state = SCREEN_MENU;
+                _currentMode = MODE_IDLE;
             }
             break;
         default: break;

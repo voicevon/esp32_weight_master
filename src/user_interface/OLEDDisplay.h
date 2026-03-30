@@ -24,6 +24,8 @@ public:
     void drawRs485Diag(uint32_t txPulse, uint8_t rxByte, uint32_t rxCount) override;
     void drawScan(int currentId, bool finished, const std::vector<ScanRow>& history, float scrollY, uint32_t scanCount) override;
     void drawAbout(const String& version, const String& buildDate) override;
+    void drawMessage(const String& msg) override;
+    void drawSequentialProgress(const String& label, int current, int total) override;
 
 private:
     void drawBarGraph(const std::vector<float>& weights, float target);
