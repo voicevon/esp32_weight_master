@@ -38,6 +38,7 @@ public:
 
     // 控制指令 (保持同步/阻塞直到完成，因为这些是偶发低频操作)
     bool openDischarge(int id);
+    bool openDischarge1S(int id); // 脉冲式开门 (1秒后自动关闭)
     bool closeDischarge(int id);
     bool tare(int id);
     bool broadcastTare(); // 广播去皮 (ID 0)

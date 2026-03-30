@@ -19,6 +19,7 @@ std::vector<float> slaveWeights(NUM_SLAVES, 0.0f);
 std::vector<bool> slaveStable(NUM_SLAVES, false);
 String systemStatus = "INIT";
 float lastCombinedWeight = 0.0f;
+uint32_t currentSelectedMask = 0; // 当前选中的斗位掩码
 float accumulatedTotalWeight = 0.0f;
 bool isProductionActive = false;
 
@@ -102,32 +103,33 @@ void controlTask(void* pvParameters) {
                     // 进入落料流程
                     xSemaphoreTake(mutexStatus, portMAX_DELAY);
                     systemStatus = "DISCHARGING";
-                    accumulatedTotalWeight += res.totalWeight;
+                    lastCombinedWeight = res.totalWeight;
+                    currentSelectedMask = 0;
+                    for (int id : res.selectedIndices) currentSelectedMask |= (1 << (id - 1));
                     xSemaphoreGive(mutexStatus);
 
-                    // 1. 发起开门指令
-                    for (int id : res.selectedIndices) rs485.openDischarge(id);
-                    
-                    // 2. 等待所有选中的从机反馈“开门结束” (Wait for DoorPhase == 3)
-                    unsigned long dischargeStart = millis();
-                    bool allDone = false;
-                    while (!allDone && (millis() - dischargeStart < 3000)) { // 3s 超时保护
-                        allDone = true;
-                        rs485.update(); // 持续推动 Modbus 轮询最新状态
-                        for (int id : res.selectedIndices) {
-                            if (rs485.getDoorPhase(id) != 3) {
-                                allDone = false;
-                                break;
-                            }
-                        }
-                        vTaskDelay(pdMS_TO_TICKS(10));
-                    }
-
-                    // 3. 执行关门与去皮
+                    // 1. 发起脉冲式开门指令
                     for (int id : res.selectedIndices) {
-                        rs485.closeDischarge(id);
+                        rs485.openDischarge1S(id);
+                    }
+                    
+                    // 2. 预留 1.2s 等待物料完全排空并门页复位 (1s 开门 + 0.2s 冗余)
+                    vTaskDelay(pdMS_TO_TICKS(1200));
+
+                    // 3. 执行去皮操作 (此时斗已由从机自行关闭，重置空斗零位)
+                    for (int id : res.selectedIndices) {
                         rs485.tare(id);
                     }
+
+                    // 4. 更新累计重量
+                    xSemaphoreTake(mutexParams, portMAX_DELAY);
+                    accumulatedTotalWeight += res.totalWeight;
+                    xSemaphoreGive(mutexParams);
+
+                    // 落料结束，清除高亮
+                    xSemaphoreTake(mutexStatus, portMAX_DELAY);
+                    currentSelectedMask = 0;
+                    xSemaphoreGive(mutexStatus);
 
                     // 级联传输
                     xSemaphoreTake(mutexStatus, portMAX_DELAY);
@@ -185,9 +187,10 @@ void uiTask(void* pvParameters) {
         float displayStable = (localStatus == "READY") ? stableSum : lastCombinedWeight;
         float totalSum = stableSum + unstableSum;
         float localAccumulatedWeight = accumulatedTotalWeight;
+        uint32_t localSelectionMask = currentSelectedMask;
         xSemaphoreGive(mutexStatus);
 
-        UserInterface::getInstance()->update(localWeights, displayStable, unstableSum, totalSum, localAccumulatedWeight, localStatus);
+        UserInterface::getInstance()->update(localWeights, displayStable, unstableSum, totalSum, localAccumulatedWeight, localStatus, localSelectionMask);
 
         vTaskDelay(pdMS_TO_TICKS(33)); // 约 30FPS 刷新率
     }

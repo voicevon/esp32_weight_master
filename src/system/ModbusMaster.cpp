@@ -249,6 +249,12 @@ bool ModbusMaster::openDischarge(int id) {
     });
 }
 
+bool ModbusMaster::openDischarge1S(int id) {
+    return execCmd(id, [this, id](){ 
+        return _mb.writeHreg(id, REG_CTRL_CMD, CMD_OPEN_1S, cbSync); 
+    });
+}
+
 bool ModbusMaster::closeDischarge(int id) {
     return execCmd(id, [this, id](){ 
         return _mb.writeHreg(id, REG_CTRL_CMD, 2, cbSync); 

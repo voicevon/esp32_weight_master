@@ -17,7 +17,7 @@ public:
     void display() override;
     
     void drawSplash(uint32_t elapsedMillis) override;
-    void drawDashboard(const std::vector<float>& weights, float stableSum, float unstableSum, float totalSum, float accumulatedWeight, float target, float tolerance, const String& status) override;
+    void drawDashboard(const std::vector<float>& weights, float stableSum, float unstableSum, float totalSum, float accumulatedWeight, float target, float tolerance, const String& status, uint32_t selectionMask = 0) override;
     void drawMenu(const String& title, const std::vector<String>& items, int cursorIndex, int scrollOffset) override;
     void drawNodeDetail(int id, float weight, bool online) override;
     void drawParamEdit(const String& label, float value, float refValue, bool isMin) override;
@@ -28,7 +28,7 @@ public:
     void drawSequentialProgress(const String& label, int current, int total) override;
 
 private:
-    void drawBarGraph(const std::vector<float>& weights, float target);
+    void drawBarGraph(const std::vector<float>& weights, float target, uint32_t selectionMask = 0);
 };
 
 #endif

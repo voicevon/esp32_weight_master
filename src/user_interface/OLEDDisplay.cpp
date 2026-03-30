@@ -69,48 +69,63 @@ void OLEDDisplay::drawSplash(uint32_t elapsedMillis) {
     }
 }
 
-void OLEDDisplay::drawDashboard(const std::vector<float>& weights, float stableSum, float unstableSum, float totalSum, float accumulatedWeight, float target, float tolerance, const String& status) {
+void OLEDDisplay::drawDashboard(const std::vector<float>& weights, float stableSum, float unstableSum, float totalSum, float accumulatedWeight, float target, float tolerance, const String& status, uint32_t selectionMask) {
     _oled.setFont(u8g2_font_wqy12_t_gb2312b);
     
-    // 1. Total Weight (Top Left)
+    // 1. 状态指示 (左上角)
+    String statusCn = status;
+    if (status == "READY") statusCn = "就绪";
+    else if (status == "DISCHARGING") statusCn = "下料";
+    else if (status == "TRANSFER-B1") statusCn = "收集";
+    else if (status == "STEPPING-B2") statusCn = "出料";
+    
     _oled.setCursor(0, 10);
-    _oled.printf("Σ:%dg", (int)(totalSum + 0.5f));
+    _oled.print(statusCn);
 
-    // 2. Unstable Weight (Top Right)
-    String unsStr = "U:" + String((int)(unstableSum + 0.5f)) + "g";
-    int unsWidth = _oled.getUTF8Width(unsStr.c_str());
-    _oled.setCursor(128 - unsWidth - 2, 10);
-    _oled.print(unsStr);
+    // 2. 总重量 (右上角)
+    String totalStr = "总:" + String((int)(totalSum + 0.5f)) + "g";
+    int totalWidth = _oled.getUTF8Width(totalStr.c_str());
+    _oled.setCursor(128 - totalWidth - 2, 10);
+    _oled.print(totalStr);
 
-    // 3. Stable Weight (Center-Top - Large)
+    // 3. 稳定重量 (中央大字)
     _oled.setFont(u8g2_font_logisoso24_tn);
-    int weightWidth = _oled.getStrWidth(String((int)(stableSum + 0.5f)).c_str());
+    int weightValue = (int)(stableSum + 0.5f);
+    String wStr = String(weightValue);
+    int weightWidth = _oled.getStrWidth(wStr.c_str());
     _oled.setCursor(64 - (weightWidth / 2) - 4, 34);
-    _oled.printf("%d", (int)(stableSum + 0.5f));
+    _oled.print(wStr);
+    
     _oled.setFont(u8g2_font_wqy12_t_gb2312b);
     _oled.print("g");
 
-    // 4. Bar Graph (Bottom)
-    drawBarGraph(weights, target);
+    // 4. 波动/不稳定重量 (中央下方小字)
+    if (abs(unstableSum) > 0.5f) {
+        _oled.setCursor(85, 34);
+        _oled.printf("(+%.0f)", unstableSum);
+    }
+
+    // 5. 柱状图 (底部)
+    drawBarGraph(weights, target, selectionMask);
 }
 
-void OLEDDisplay::drawBarGraph(const std::vector<float>& weights, float target) {
+void OLEDDisplay::drawBarGraph(const std::vector<float>& weights, float target, uint32_t selectionMask) {
     int marginX = 4;
     int graphWidth = 120;
-    int maxHeight = 30;
+    int maxHeight = 28;
     int bottomY = 63;
     int barWidth = 4;
     int spacing = 6;
 
-    // Draw target reference line (dashed/dotted looks cleaner)
+    // 绘制目标参考线
     if (target > 0) {
+        int targetY = bottomY - (int)(maxHeight / 1.5f); 
         for (int x = 0; x < 128; x += 4) {
-            _oled.drawHLine(x, bottomY - maxHeight, 2);
+            _oled.drawHLine(x, targetY, 2);
         }
     }
 
     for (int i = 0; i < (int)weights.size(); i++) {
-        // Use a relative ratio based on target or a fixed scale (e.g. 1000g)
         float displayMax = (target > 0) ? target * 1.5f : 1000.0f;
         float ratio = weights[i] / displayMax;
         
@@ -120,10 +135,16 @@ void OLEDDisplay::drawBarGraph(const std::vector<float>& weights, float target) 
 
         int x = marginX + (i * spacing);
         
-        // Solid bar for weight
-        _oled.drawBox(x, bottomY - h, barWidth, h);
-        
-        // Small indicator if this bin is selected (if we had that info, not available yet)
+        bool isSelected = (selectionMask >> i) & 1;
+
+        if (isSelected) {
+            // 选中状态：实心高亮柱子 + 底部指示框
+            _oled.drawBox(x, bottomY - h, barWidth, h);
+            _oled.drawFrame(x-1, bottomY + 1, barWidth+2, 2); // 底部高亮条
+        } else {
+            // 普通状态：空心或浅色柱子
+            _oled.drawFrame(x, bottomY - h, barWidth, h);
+        }
     }
 }
 

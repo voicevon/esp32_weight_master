@@ -58,7 +58,7 @@ public:
     void initialize(float* targetMin, float* targetMax, float* accumulatedTotalWeight, ModbusMaster* rs485);
     void addDisplay(Display* display);
     
-    void update(const std::vector<float>& weights, float stableSum, float unstableSum, float totalSum, float accumulatedWeight, const String& status);
+    void update(const std::vector<float>& weights, float stableSum, float unstableSum, float totalSum, float accumulatedWeight, const String& status, uint32_t selectionMask = 0);
     
     void setMode(OperationMode mode) { _currentMode = mode; }
     OperationMode getMode() const { return _currentMode; }
