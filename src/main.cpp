@@ -8,8 +8,6 @@
 #include "user_interface/UserInterface.h"
 #include "user_interface/OLEDDisplay.h"
 #include "system/PinDefinition.h"
-#include "system/SystemTypes.h"
-
 // ---------------------------
 // 共享资源与同步锁
 // ---------------------------
@@ -209,9 +207,7 @@ void setup() {
     mutexStatus = xSemaphoreCreateMutex();
 
     // 初始化 HMI (Core 0 操作)
-    display.setI2CAddress(0x3C * 2); // U8g2 expects 8-bit address or use setI2CAddress
-    // Alternatively, just call begin() if 0x3C is default. 
-    // Actually U8g2 begin() handles it.
+    display.setI2CAddress(0x3C * 2);
     if(!display.begin()) {
         Serial.println(F("U8g2 initialization failed"));
     }

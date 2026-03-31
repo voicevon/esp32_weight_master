@@ -1,7 +1,6 @@
 #ifndef USER_INTERFACE_H
 #define USER_INTERFACE_H
 
-#include <Adafruit_SSD1306.h>
 #include "Encoder.h"
 #include "Display.h"
 #include "MenuSystem.h"
@@ -21,7 +20,6 @@ private:
     UIState _state = SCREEN_SPLASH;
     unsigned long _lastUpdate = 0;
     unsigned long _stateStartTime = 0;
-    unsigned long _lastButtonTime = 0;
 
     // System pointers
     float* _targetMin;
@@ -48,7 +46,6 @@ private:
     // Scan Mode specific
     std::vector<ScanRow> _scanHistory;
     unsigned long _lastScanFinishTime = 0;
-    int _lastReportedProgress = 0;
     float _currentScrollY = 0;
     float _targetScrollY = 0;
     uint32_t _totalScans = 0;
