@@ -5,6 +5,7 @@
 #include <ModbusRTU.h>
 #include <functional>
 #include "PinDefinition.h"
+#include "SystemTypes.h"
 
 class ModbusMaster {
 public:
@@ -35,6 +36,10 @@ public:
     uint8_t getDoorPhase(int id);
     bool isNodeOnline(int id);
     const bool* getOnlineStatusArray() const { return _onlineStatus; }
+    
+    // 状态机管理接口
+    NodeStatus getNodeStatus(int id) const { return (id >= 1 && id <= 20) ? _nodeStatus[id] : NODE_DIRTY; }
+    void setNodeStatus(int id, NodeStatus s);
 
     // 控制指令 (保持同步/阻塞直到完成，因为这些是偶发低频操作)
     bool openDischarge(int id);
@@ -74,6 +79,7 @@ private:
     uint8_t _doorPhases[21];
     bool _onlineStatus[21];
     bool _pollWhitelist[21]; // 通讯白名单：仅名单内节点参与普通轮询
+    NodeStatus _nodeStatus[21]; // 节点级状态机缓存
     uint16_t _tempRegs[3];     
     
     // 统计项

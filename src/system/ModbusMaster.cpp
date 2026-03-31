@@ -17,6 +17,7 @@ ModbusMaster::ModbusMaster(int rxPin, int txPin, int enPin, long baud)
         _doorPhases[i] = 0;
         _onlineStatus[i] = false;
         _pollWhitelist[i] = true; // 默认全部开启，直到加载配置
+        _nodeStatus[i] = NODE_DIRTY; // 初始为脏数据，等待第一次轮询刷新
         _failCounters[i] = 0;
         _nodeErrorStats[i] = 0;
         _nodeLastResult[i] = Modbus::EX_SUCCESS;
@@ -143,6 +144,23 @@ bool ModbusMaster::cbPoll(Modbus::ResultCode event, uint16_t transactionId, void
             uint16_t status = instance->_tempRegs[2];
             instance->_isStable[id] = (status >> 8) & 0x01;
             instance->_doorPhases[id] = (status >> 9) & 0x07;
+
+            // --- 节点状态机核心逻辑 (数据新鲜度校验) ---
+            NodeStatus current = instance->_nodeStatus[id];
+            bool stable = instance->_isStable[id];
+            uint8_t phase = instance->_doorPhases[id];
+
+            if (current == NODE_DIRTY) {
+                // 收到下料后的第一个有效包，允许进入刷新态
+                instance->_nodeStatus[id] = NODE_REFRESHING;
+            } else if (current == NODE_REFRESHING || current == NODE_STABLE) {
+                // 如果门已关闭且数据稳定，则标记为最终可用
+                if (phase == 0 && stable) {
+                    instance->_nodeStatus[id] = NODE_STABLE;
+                } else if (!stable) {
+                    instance->_nodeStatus[id] = NODE_REFRESHING;
+                }
+            }
         }
     } else {
         instance->_status = (event == Modbus::EX_TIMEOUT) ? ST_TIMEOUT : ST_ERROR;
@@ -250,9 +268,18 @@ bool ModbusMaster::openDischarge(int id) {
 }
 
 bool ModbusMaster::openDischarge1S(int id) {
-    return execCmd(id, [this, id](){ 
+    bool ok = execCmd(id, [this, id](){ 
         return _mb.writeHreg(id, REG_CTRL_CMD, CMD_OPEN_1S, cbSync); 
     });
+    if (ok) setNodeStatus(id, NODE_DISCHARGING);
+    return ok;
+}
+
+void ModbusMaster::setNodeStatus(int id, NodeStatus s) {
+    if (id < 1 || id > 20) return;
+    xSemaphoreTake(_mutexBus, portMAX_DELAY);
+    _nodeStatus[id] = s;
+    xSemaphoreGive(_mutexBus);
 }
 
 bool ModbusMaster::closeDischarge(int id) {

@@ -31,4 +31,26 @@ enum UIState {
     SCREEN_SEQUENTIAL_PROGRESS // 序列动作进度界面
 };
 
+/**
+ * @brief 系统业务状态 (枚举规范)
+ */
+enum SystemStatus {
+    SYS_INIT,          // 初始化中
+    SYS_READY,         // 准备就绪
+    SYS_DISCHARGING,   // 下料中
+    SYS_TRANSFER_B1,   // 级联传送中 (B1)
+    SYS_STEPPING_B2    // 步进传送中 (B2)
+};
+
+/**
+ * @brief 节点级独立状态机 (保证数据新鲜度)
+ */
+enum NodeStatus {
+    NODE_STABLE,       // 就绪：重量已读回且稳定，可参与组合
+    NODE_LOCKED,       // 锁定：已被组合引擎选中，正等待下料
+    NODE_DISCHARGING,  // 下料中：出料指令已发送
+    NODE_DIRTY,        // 脏数据：下料结束，缓存仍为旧重，严禁参与组合
+    NODE_REFRESHING    // 刷新中：已读回第1个新重量，等待稳定
+};
+
 #endif

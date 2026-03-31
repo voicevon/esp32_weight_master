@@ -7,6 +7,7 @@
 #include "system/ModbusMaster.h"
 
 #include "system/SystemTypes.h"
+#include "system/SystemContext.h"
 
 class UserInterface {
 private:
@@ -21,10 +22,8 @@ private:
     unsigned long _lastUpdate = 0;
     unsigned long _stateStartTime = 0;
 
-    // System pointers
-    float* _targetMin;
-    float* _targetMax;
-    float* _accumulatedTotalWeight; // 控制累计重量归零
+    // System Context
+    SystemContext* _ctx;
     ModbusMaster* _rs485;
 
     // Detail/Edit context
@@ -52,10 +51,10 @@ private:
 
 public:
     static UserInterface* getInstance();
-    void initialize(float* targetMin, float* targetMax, float* accumulatedTotalWeight, ModbusMaster* rs485);
+    void initialize(SystemContext* ctx, ModbusMaster* rs485);
     void addDisplay(Display* display);
     
-    void update(const std::vector<float>& weights, float stableSum, float unstableSum, float totalSum, float accumulatedWeight, const String& status, uint32_t selectionMask = 0);
+    void update(const std::vector<float>& weights, float stableSum, float unstableSum, float totalSum, float accumulatedWeight, SystemStatus status, uint32_t selectionMask = 0);
     
     void setMode(OperationMode mode) { _currentMode = mode; }
     OperationMode getMode() const { return _currentMode; }

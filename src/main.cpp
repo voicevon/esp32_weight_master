@@ -8,29 +8,35 @@
 #include "user_interface/UserInterface.h"
 #include "user_interface/OLEDDisplay.h"
 #include "system/PinDefinition.h"
+#include "system/SystemTypes.h"
+#include "system/SystemConfig.h"
+#include "system/SystemContext.h"
+#include <Preferences.h>
+
 // ---------------------------
-// 共享资源与同步锁
+// 共享资源与状态上下文
 // ---------------------------
-float targetMin = 290.0f;
-float targetMax = 310.0f;
+SystemContext globalCtx;
 std::vector<float> slaveWeights(NUM_SLAVES, 0.0f);
 std::vector<bool> slaveStable(NUM_SLAVES, false);
-String systemStatus = "INIT";
+SystemStatus systemStatus = SYS_INIT;
 float lastCombinedWeight = 0.0f;
-uint32_t currentSelectedMask = 0; // 当前选中的斗位掩码
+uint32_t currentSelectedMask = 0; 
 float accumulatedTotalWeight = 0.0f;
 bool isProductionActive = false;
 
-SemaphoreHandle_t mutexParams; // 保护 targetMin/Max 和生产开关
-SemaphoreHandle_t mutexWeights; // 保护 slaveWeights
-SemaphoreHandle_t mutexStatus;  // 保护 systemStatus
+SemaphoreHandle_t mutexParams; 
+SemaphoreHandle_t mutexWeights; 
+SemaphoreHandle_t mutexStatus;  
+
+Preferences nvs;
 
 // ---------------------------
 // 全局对象
 // ---------------------------
 U8G2_SSD1306_128X64_NONAME_F_HW_I2C display(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
 ModbusMaster rs485(PIN_RS485_RX, PIN_RS485_TX, PIN_RS485_TX_EN, RS485_BAUD);
-CombinationEngine engine(targetMin, targetMax);
+CombinationEngine engine(290.0f, 310.0f); // 初始值将很快被 setup 中的 NVS 覆盖
 ConveyorController conveyor(&rs485, MOTOR_ID_BELT1, MOTOR_ID_BELT2);
 
 // ---------------------------
@@ -49,8 +55,8 @@ void controlTask(void* pvParameters) {
             rs485.update();
         }
 
-        // 2. 更新本地重量缓存 (仅在生产或详情查看时有意义)
-        if (mode == MODE_PRODUCTION || mode == MODE_DIAG_DETAIL) {
+        // 2. 更新本地重量缓存 (待机/生产/查看详情时均更新，确保实时性)
+        if (mode == MODE_PRODUCTION || mode == MODE_IDLE || mode == MODE_DIAG_DETAIL) {
             xSemaphoreTake(mutexWeights, portMAX_DELAY);
             for (int i = 0; i < NUM_SLAVES; i++) {
                 slaveWeights[i] = rs485.getWeight(i + 1);
@@ -61,67 +67,84 @@ void controlTask(void* pvParameters) {
 
         // 3. 生产逻辑处理
         bool canCalculate = false;
-        String currentStatus;
         float currentMin, currentMax;
 
         xSemaphoreTake(mutexParams, portMAX_DELAY);
         canCalculate = isProductionActive;
-        currentMin = targetMin;
-        currentMax = targetMax;
+        currentMin = globalCtx.config.targetMin;
+        currentMax = globalCtx.config.targetMax;
         xSemaphoreGive(mutexParams);
 
         xSemaphoreTake(mutexStatus, portMAX_DELAY);
-        currentStatus = systemStatus;
+        SystemStatus currentStatus = systemStatus;
         xSemaphoreGive(mutexStatus);
 
-        if (canCalculate && currentStatus == "READY") {
-            if (millis() - lastCalcTime > 150) { // 控制计算频率
+        if (canCalculate && currentStatus == SYS_READY) {
+            if (millis() - lastCalcTime > CALC_ENGINE_INTERVAL_MS) { 
                 lastCalcTime = millis();
                 
                 engine.setTargetRange(currentMin, currentMax);
                 
-                // 仅将稳定的重量参与组合计算
-                std::vector<float> stableWeightsForEngine(NUM_SLAVES, 0.0f);
+                // --- 动态映射方案：仅将活跃稳定的节点送入引擎 ---
+                std::vector<float> activeWeights;
+                std::vector<int> activeIds;
+                
                 for (int i = 0; i < NUM_SLAVES; i++) {
-                    if (slaveStable[i]) {
-                        stableWeightsForEngine[i] = slaveWeights[i];
-                    } else {
-                        stableWeightsForEngine[i] = -10000.0f; // 标记为极其巨大的负数，确保不被选中
+                    int id = i + 1;
+                    if (slaveStable[i] && rs485.getNodeStatus(id) == NODE_STABLE) {
+                        activeWeights.push_back(slaveWeights[i]);
+                        activeIds.push_back(id);
                     }
                 }
                 
-                CombinationResult res = engine.findBestCombination(stableWeightsForEngine);
-                
-                // Live preview: always update lastCombinedWeight if in READY state
-                xSemaphoreTake(mutexStatus, portMAX_DELAY);
-                lastCombinedWeight = res.success ? res.totalWeight : 0.0f; 
-                xSemaphoreGive(mutexStatus);
+                int availableCnt = activeWeights.size();
+                CombinationResult res = {false, 0.0f, {}};
 
+                // 只要有可用节点就尝试计算 (取消最低限制)
+                if (availableCnt > 0) {
+                    res = engine.findBestCombination(activeWeights);
+                }
+                
+                // 生产环境诊断日志
                 if (res.success) {
-                    // 进入落料流程
+                    // 进入落料流程，立即锁定相关节点 (通过映射还原物理 ID)
                     xSemaphoreTake(mutexStatus, portMAX_DELAY);
-                    systemStatus = "DISCHARGING";
+                    systemStatus = SYS_DISCHARGING;
                     lastCombinedWeight = res.totalWeight;
                     currentSelectedMask = 0;
-                    for (int id : res.selectedIndices) currentSelectedMask |= (1 << (id - 1));
+                    
+                    std::vector<int> mappedIds;
+                    for (int idx_in_active : res.selectedIndices) {
+                        int physicalId = activeIds[idx_in_active - 1];
+                        mappedIds.push_back(physicalId);
+                        currentSelectedMask |= (1 << (physicalId - 1));
+                        rs485.setNodeStatus(physicalId, NODE_LOCKED);
+                    }
                     xSemaphoreGive(mutexStatus);
 
+                    Serial.printf("[AUTO] Combination Found: %.1f g, Mask: 0x%08X (Avail: %d)\n", 
+                                  res.totalWeight, currentSelectedMask, availableCnt);
+                    
                     // 1. 发起脉冲式开门指令
-                    for (int id : res.selectedIndices) {
-                        rs485.openDischarge1S(id);
+                    for (int id : mappedIds) {
+                        rs485.openDischarge1S(id); // 内部会自动设为 NODE_DISCHARGING
                     }
                     
-                    // 2. 预留 1.2s 等待物料完全排空并门页复位 (1s 开门 + 0.2s 冗余)
-                    vTaskDelay(pdMS_TO_TICKS(1200));
+                    // 2. 预留等待物料完全排空并门页复位 (从配置加载延时)
+                    vTaskDelay(pdMS_TO_TICKS(DISCHARGE_SETTLE_MS));
 
-                    // 3. 执行去皮操作 (此时斗已由从机自行关闭，重置空斗零位)
-                    for (int id : res.selectedIndices) {
-                        rs485.tare(id);
+                    // 3. 标记数据已过时，强制等待下一次扫描刷新
+                    for (int id : mappedIds) {
+                        rs485.setNodeStatus(id, NODE_DIRTY);
                     }
 
-                    // 4. 更新累计重量
+                    // 4. 更新累计重量并持久化
                     xSemaphoreTake(mutexParams, portMAX_DELAY);
                     accumulatedTotalWeight += res.totalWeight;
+                    globalCtx.config.accumulatedWeight = accumulatedTotalWeight;
+                    nvs.begin("production", false);
+                    nvs.putFloat("accu", accumulatedTotalWeight);
+                    nvs.end();
                     xSemaphoreGive(mutexParams);
 
                     // 落料结束，清除高亮
@@ -131,20 +154,28 @@ void controlTask(void* pvParameters) {
 
                     // 级联传输
                     xSemaphoreTake(mutexStatus, portMAX_DELAY);
-                    systemStatus = "TRANSFER-B1";
+                    systemStatus = SYS_TRANSFER_B1;
                     xSemaphoreGive(mutexStatus);
                     conveyor.collectFromUnits();
-                    vTaskDelay(pdMS_TO_TICKS(2500));
+                    vTaskDelay(pdMS_TO_TICKS(BELT_COLLECT_PERIOD_MS));
 
                     xSemaphoreTake(mutexStatus, portMAX_DELAY);
-                    systemStatus = "STEPPING-B2";
+                    systemStatus = SYS_STEPPING_B2;
                     xSemaphoreGive(mutexStatus);
                     conveyor.advanceOutput();
-                    vTaskDelay(pdMS_TO_TICKS(1200));
+                    vTaskDelay(pdMS_TO_TICKS(BELT_STEP_PERIOD_MS));
 
                     xSemaphoreTake(mutexStatus, portMAX_DELAY);
-                    systemStatus = "READY";
+                    systemStatus = SYS_READY;
                     xSemaphoreGive(mutexStatus);
+                } else {
+                    // 每 2 秒打印一次为何没组合成功 (避免刷屏)
+                    static uint32_t lastEngineLog = 0;
+                    if (millis() - lastEngineLog > 2000) {
+                        Serial.printf("[ENGINE] Standby... Avail Nodes: %d, Target: [%.1f-%.1f]\n", 
+                                      availableCnt, currentMin, currentMax);
+                        lastEngineLog = millis();
+                    }
                 }
             }
         }
@@ -162,27 +193,24 @@ void uiTask(void* pvParameters) {
         // 如果 UI 修改了 targetMin/Max，这里会被同步（UserInterface 持有指针）
         xSemaphoreGive(mutexParams);
 
-        // 2. 刷新显示 (核心 0 专属 IO 操作)
+        // 2. 刷新显示 (核心 0 专属数据汇总)
         std::vector<float> localWeights(NUM_SLAVES);
-        String localStatus;
+        SystemStatus localStatus;
         float stableSum = 0.0f;
         float unstableSum = 0.0f;
         
         xSemaphoreTake(mutexWeights, portMAX_DELAY);
         localWeights = slaveWeights;
         for (int i = 0; i < NUM_SLAVES; i++) {
-            if (slaveStable[i]) {
-                stableSum += slaveWeights[i];
-            } else {
-                unstableSum += slaveWeights[i];
-            }
+            if (slaveStable[i]) stableSum += slaveWeights[i];
+            else unstableSum += slaveWeights[i];
         }
         xSemaphoreGive(mutexWeights);
 
         xSemaphoreTake(mutexStatus, portMAX_DELAY);
         localStatus = systemStatus;
-        // 如果处于 READY 状态，显示所有稳定斗的实时总和；否则显示上一批次的组合重量
-        float displayStable = (localStatus == "READY") ? stableSum : lastCombinedWeight;
+        // 待机或就绪：显示实时稳定总重；下料动作中：显示该批次目标重量
+        float displayStable = (localStatus == SYS_READY || localStatus == SYS_INIT) ? stableSum : lastCombinedWeight;
         float totalSum = stableSum + unstableSum;
         float localAccumulatedWeight = accumulatedTotalWeight;
         uint32_t localSelectionMask = currentSelectedMask;
@@ -206,19 +234,30 @@ void setup() {
     mutexWeights = xSemaphoreCreateMutex();
     mutexStatus = xSemaphoreCreateMutex();
 
-    // 初始化 HMI (Core 0 操作)
+    // 1. 持久化数据加载
+    nvs.begin("production", true); // 只读模式
+    globalCtx.config.targetMin = nvs.getFloat("tmin", 290.0f);
+    globalCtx.config.targetMax = nvs.getFloat("tmax", 310.0f);
+    globalCtx.config.accumulatedWeight = nvs.getFloat("accu", 0.0f);
+    nvs.end();
+
+    accumulatedTotalWeight = globalCtx.config.accumulatedWeight;
+    Serial.printf("[SYSTEM] Persistence loaded: Min=%.1f, Max=%.1f, Accu=%.1f\n", 
+                   globalCtx.config.targetMin, globalCtx.config.targetMax, accumulatedTotalWeight);
+
+    // 2. 初始化 HMI (Core 0 操作)
     display.setI2CAddress(0x3C * 2);
     if(!display.begin()) {
         Serial.println(F("U8g2 initialization failed"));
     }
-    display.enableUTF8Print(); // Enable UTF8 for Chinese support
-    UserInterface::getInstance()->initialize(&targetMin, &targetMax, &accumulatedTotalWeight, &rs485);
+    display.enableUTF8Print(); 
+    UserInterface::getInstance()->initialize(&globalCtx, &rs485);
     UserInterface::getInstance()->addDisplay(new OLEDDisplay(display));
 
     // 初始化硬件
     rs485.begin();
     conveyor.begin();
-    systemStatus = "READY";
+    systemStatus = SYS_READY;
 
     // 创建多任务 (关键分配)
     xTaskCreatePinnedToCore(

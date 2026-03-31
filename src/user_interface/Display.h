@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <vector>
+#include "system/SystemTypes.h"
 
 struct ScanRow {
     bool online[21]; // Indices 1-20
@@ -21,7 +22,7 @@ public:
     
     // 高层显示方法
     virtual void drawSplash(uint32_t elapsedMillis) = 0;
-    virtual void drawDashboard(const std::vector<float>& weights, float stableSum, float unstableSum, float totalSum, float accumulatedWeight, float target, float tolerance, const String& status, uint32_t selectionMask = 0) = 0;
+    virtual void drawDashboard(const std::vector<float>& weights, float stableSum, float unstableSum, float totalSum, float accumulatedWeight, float target, float tolerance, SystemStatus status, uint32_t selectionMask = 0) = 0;
     virtual void drawMenu(const String& title, const std::vector<String>& items, int cursorIndex, int scrollOffset) = 0;
     virtual void drawNodeDetail(int id, float weight, bool online) = 0;
     virtual void drawParamEdit(const String& label, float value, float refValue, bool isMin) = 0;

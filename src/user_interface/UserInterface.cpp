@@ -1,4 +1,5 @@
 #include "UserInterface.h"
+#include <Preferences.h>
 
 UserInterface* UserInterface::instance = nullptr;
 
@@ -9,12 +10,10 @@ UserInterface* UserInterface::getInstance() {
     return instance;
 }
 
-void UserInterface::initialize(float* targetMin, float* targetMax, float* accumulatedTotalWeight, ModbusMaster* rs485) {
+void UserInterface::initialize(SystemContext* ctx, ModbusMaster* rs485) {
     Encoder::getInstance()->initialize();
     
-    _targetMin = targetMin;
-    _targetMax = targetMax;
-    _accumulatedTotalWeight = accumulatedTotalWeight;
+    _ctx = ctx;
     _rs485 = rs485;
     
     setupMenuTree();
@@ -68,7 +67,7 @@ void UserInterface::setupMenuTree() {
         _lastSequentialStepTime = millis();
     }));
     commands->addItem(MenuItem("5. 清除累计", MENU_TYPE_ACTION, nullptr, [this](){
-        if (_accumulatedTotalWeight) *_accumulatedTotalWeight = 0;
+        _ctx->config.accumulatedWeight = 0;
         _messageBoxText = "累计重量已清零";
         _messageTimer = millis();
         _state = SCREEN_MESSAGE;
@@ -115,7 +114,7 @@ void UserInterface::setupMenuTree() {
     _menu.setRootMenu(root);
 }
 
-void UserInterface::update(const std::vector<float>& weights, float stableSum, float unstableSum, float totalSum, float accumulatedWeight, const String& status, uint32_t selectionMask) {
+void UserInterface::update(const std::vector<float>& weights, float stableSum, float unstableSum, float totalSum, float accumulatedWeight, SystemStatus status, uint32_t selectionMask) {
     handleInput();
     
     // RS485 诊断屏幕下的 1Hz 脉冲与 RX 监听逻辑
@@ -222,7 +221,7 @@ void UserInterface::update(const std::vector<float>& weights, float stableSum, f
                 if (_currentMode == MODE_ABOUT) {
                     d->drawAbout("v1.5.0", __DATE__);
                 } else {
-                    d->drawDashboard(weights, stableSum, unstableSum, totalSum, accumulatedWeight, *_targetMin, *_targetMax - *_targetMin, status, selectionMask);
+                    d->drawDashboard(weights, stableSum, unstableSum, totalSum, accumulatedWeight, _ctx->config.targetMin, _ctx->config.targetMax - _ctx->config.targetMin, status, selectionMask);
                 }
                 break;
             case SCREEN_MENU: {
@@ -236,8 +235,8 @@ void UserInterface::update(const std::vector<float>& weights, float stableSum, f
                 d->drawNodeDetail(_selectedNode, weights[_selectedNode-1], _rs485->isNodeOnline(_selectedNode));
                 break;
             case SCREEN_EDIT:
-                if (_editParamIdx == 0) d->drawParamEdit("最小值", *_targetMin, *_targetMax, true);
-                else d->drawParamEdit("最大值", *_targetMax, *_targetMin, false);
+                if (_editParamIdx == 0) d->drawParamEdit("最小值", _ctx->config.targetMin, _ctx->config.targetMax, true);
+                else d->drawParamEdit("最大值", _ctx->config.targetMax, _ctx->config.targetMin, false);
                 break;
             case SCREEN_RS485_DIAG:
                 d->drawRs485Diag(_diagTxByte, _diagRxByte, _diagRxCount);
@@ -282,13 +281,22 @@ void UserInterface::handleInput() {
             break;
         case SCREEN_EDIT:
             if (_editParamIdx == 0) {
-                *_targetMin = constrain(*_targetMin + delta * 10.0f, 10.0f, *_targetMax);
+                _ctx->config.targetMin = constrain(_ctx->config.targetMin + delta * 10.0f, 10.0f, _ctx->config.targetMax);
             } else {
-                *_targetMax = constrain(*_targetMax + delta * 10.0f, *_targetMin, 5000.0f);
+                _ctx->config.targetMax = constrain(_ctx->config.targetMax + delta * 10.0f, _ctx->config.targetMin, 5000.0f);
             }
             
             if (clicked) {
-                _state = SCREEN_MENU;
+                // 保存修改后的参数到 NVS (持久化)
+                Preferences prefs;
+                prefs.begin("production", false);
+                prefs.putFloat("tmin", _ctx->config.targetMin);
+                prefs.putFloat("tmax", _ctx->config.targetMax);
+                prefs.end();
+                
+                _messageBoxText = "参数已保存";
+                _messageTimer = millis();
+                _state = SCREEN_MESSAGE;
             }
             break;
         case SCREEN_RS485_DIAG:

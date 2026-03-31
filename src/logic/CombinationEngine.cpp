@@ -2,67 +2,102 @@
 #include <algorithm>
 #include <Arduino.h>
 
-struct SubsetResult {
+struct NodeRef {
     float weight;
-    uint32_t mask;
+    int index; // Original index in the input vector (0-indexed)
 };
 
 CombinationEngine::CombinationEngine(float minWeight, float maxWeight)
     : _minWeight(minWeight), _maxWeight(maxWeight) {}
 
 CombinationResult CombinationEngine::findBestCombination(const std::vector<float>& weights) {
-    CombinationResult bestResult = {false, 0.0f, {}};
+    CombinationResult result = {false, 0.0f, {}};
     int n = weights.size();
-    if (n == 0) return bestResult;
+    if (n == 0) return result;
 
-    int n1 = n / 2;
-    int n2 = n - n1;
-
-    // 1. Generate all subset sums for the first half
-    std::vector<SubsetResult> left;
-    left.reserve(1 << n1);
-    for (int i = 0; i < (1 << n1); i++) {
-        float sum = 0;
-        for (int j = 0; j < n1; j++) if ((i >> j) & 1) sum += weights[j];
-        left.push_back({sum, (uint32_t)i});
+    // 1. 结构化并降序排序 (优先处理大物料)
+    std::vector<NodeRef> nodes;
+    nodes.reserve(n);
+    for (int i = 0; i < n; i++) {
+        if (weights[i] > 0) {
+            nodes.push_back({weights[i], i});
+        }
     }
+    
+    if (nodes.empty()) return result;
 
-    // 2. Sort left subsets
-    std::sort(left.begin(), left.end(), [](const SubsetResult& a, const SubsetResult& b) {
-        return a.weight < b.weight;
+    std::sort(nodes.begin(), nodes.end(), [](const NodeRef& a, const NodeRef& b) {
+        return a.weight > b.weight;
     });
 
-    float bestWeight = 1e9; // We want the smallest weight within [min, max]
+    // 2. 贪婪初选：从重到轻累加，直到达到下限
+    std::vector<int> selections; // 存储在 nodes 中的索引
+    float currentSum = 0;
     
-    // 3. Match with the second half
-    for (int i = 0; i < (1 << n2); i++) {
-        float sum2 = 0;
-        for (int j = 0; j < n2; j++) if ((i >> j) & 1) sum2 += weights[n1 + j];
+    for (int i = 0; i < (int)nodes.size(); i++) {
+        currentSum += nodes[i].weight;
+        selections.push_back(i);
+        if (currentSum >= _minWeight) break;
+    }
 
-        float lower = _minWeight - sum2;
-        float upper = _maxWeight - sum2;
+    // 3. 初选校验：如果初选就超上限，说明无法通过大斗组合直接满足
+    if (currentSum < _minWeight || currentSum > _maxWeight) {
+        // 尝试从头开始找一个单斗满足的 (兜底)
+        for(int i = 0; i < (int)nodes.size(); i++) {
+            if (nodes[i].weight >= _minWeight && nodes[i].weight <= _maxWeight) {
+                result.success = true;
+                result.totalWeight = nodes[i].weight;
+                result.selectedIndices = {nodes[i].index + 1};
+                return result;
+            }
+        }
+        return result; 
+    }
+
+    // 4. 置换优化：尝试用剩余的“较小”斗替换掉已选中的“最小”斗，看能否更逼近下限
+    bool optimized = true;
+    while (optimized) {
+        optimized = false;
         
-        // Find first sum >= lower
-        auto it = std::lower_bound(left.begin(), left.end(), lower, 
-            [](const SubsetResult& sr, float val) { return sr.weight < val; });
+        // 找到当前选中组合中权重最小的那个
+        int smallest_in_sel_idx = -1;
+        float min_weight_in = 1e9;
+        int list_pos_in_selections = -1;
 
-        if (it != left.end()) {
-            float total = it->weight + sum2;
-            if (total >= _minWeight && total <= _maxWeight) {
-                if (total < bestWeight) {
-                    bestWeight = total;
-                    bestResult.success = true;
-                    bestResult.totalWeight = total;
-                    
-                    bestResult.selectedIndices.clear();
-                    for (int j = 0; j < n1; j++) if ((it->mask >> j) & 1) bestResult.selectedIndices.push_back(j + 1);
-                    for (int j = 0; j < n2; j++) if ((i >> j) & 1) bestResult.selectedIndices.push_back(n1 + j + 1);
-                    
-                    if (total == _minWeight) break; // Perfect match
-                }
+        for (int i = 0; i < (int)selections.size(); i++) {
+            int node_idx = selections[i];
+            if (nodes[node_idx].weight < min_weight_in) {
+                min_weight_in = nodes[node_idx].weight;
+                smallest_in_sel_idx = node_idx;
+                list_pos_in_selections = i;
+            }
+        }
+
+        // 在未选中的斗中寻找一个替代者
+        for (int i = 0; i < (int)nodes.size(); i++) {
+            // 检查是否已选中
+            bool already_selected = false;
+            for (int s : selections) if (s == i) { already_selected = true; break; }
+            if (already_selected) continue;
+
+            float newWeight = currentSum - min_weight_in + nodes[i].weight;
+            
+            // 如果新重量仍在范围内，且比当前重量更接近下限，则替换
+            if (newWeight >= _minWeight && newWeight < currentSum) {
+                currentSum = newWeight;
+                selections[list_pos_in_selections] = i;
+                optimized = true;
+                break; // 继续下一轮全局置换
             }
         }
     }
 
-    return bestResult;
+    // 5. 封装结果
+    result.success = true;
+    result.totalWeight = currentSum;
+    for (int node_idx : selections) {
+        result.selectedIndices.push_back(nodes[node_idx].index + 1);
+    }
+
+    return result;
 }

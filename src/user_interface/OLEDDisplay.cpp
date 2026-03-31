@@ -69,26 +69,44 @@ void OLEDDisplay::drawSplash(uint32_t elapsedMillis) {
     }
 }
 
-void OLEDDisplay::drawDashboard(const std::vector<float>& weights, float stableSum, float unstableSum, float totalSum, float accumulatedWeight, float target, float tolerance, const String& status, uint32_t selectionMask) {
+void OLEDDisplay::drawDashboard(const std::vector<float>& weights, float stableSum, float unstableSum, float totalSum, float accumulatedWeight, float target, float tolerance, SystemStatus status, uint32_t selectionMask) {
+    drawStatusBar(status, totalSum);
+    drawWeightDisplay(stableSum, unstableSum);
+    drawBarGraph(weights, target, selectionMask);
+}
+
+void OLEDDisplay::drawStatusBar(SystemStatus status, float totalSum) {
     _oled.setFont(u8g2_font_wqy12_t_gb2312b);
     
-    // 1. 状态指示 (左上角)
-    String statusCn = status;
-    if (status == "READY") statusCn = "就绪";
-    else if (status == "DISCHARGING") statusCn = "下料";
-    else if (status == "TRANSFER-B1") statusCn = "收集";
-    else if (status == "STEPPING-B2") statusCn = "出料";
+    // 状态映射 (语义更通俗)
+    String statusCn = "";
+    if (status == SYS_READY) statusCn = "自动";
+    else if (status == SYS_DISCHARGING) statusCn = "下料";
+    else if (status == SYS_TRANSFER_B1) statusCn = "收集";
+    else if (status == SYS_STEPPING_B2) statusCn = "出料";
+    else if (status == SYS_INIT) statusCn = "停止";
     
     _oled.setCursor(0, 10);
     _oled.print(statusCn);
 
-    // 2. 总重量 (右上角)
-    String totalStr = "总:" + String((int)(totalSum + 0.5f)) + "g";
+    // 全机库存显示
+    String totalStr = "库存:" + String((int)(totalSum + 0.5f)) + "g";
     int totalWidth = _oled.getUTF8Width(totalStr.c_str());
     _oled.setCursor(128 - totalWidth - 2, 10);
     _oled.print(totalStr);
 
-    // 3. 稳定重量 (中央大字)
+    // 交互引导提示
+    if (status == SYS_INIT) {
+        _oled.setFont(u8g2_font_wqy12_t_gb2312a); // 正常 12 像素字体
+        String prompt = "=== 点击旋钮 开启生产 ===";
+        int pWidth = _oled.getUTF8Width(prompt.c_str());
+        _oled.setCursor((128 - pWidth) / 2, 62);
+        _oled.print(prompt);
+    }
+}
+
+void OLEDDisplay::drawWeightDisplay(float stableSum, float unstableSum) {
+    // 稳定重量 (中央大字)
     _oled.setFont(u8g2_font_logisoso24_tn);
     int weightValue = (int)(stableSum + 0.5f);
     String wStr = String(weightValue);
@@ -99,14 +117,11 @@ void OLEDDisplay::drawDashboard(const std::vector<float>& weights, float stableS
     _oled.setFont(u8g2_font_wqy12_t_gb2312b);
     _oled.print("g");
 
-    // 4. 波动/不稳定重量 (中央下方小字)
+    // 波动/不稳定重量 (中央下方小字)
     if (abs(unstableSum) > 0.5f) {
         _oled.setCursor(85, 34);
         _oled.printf("(+%.0f)", unstableSum);
     }
-
-    // 5. 柱状图 (底部)
-    drawBarGraph(weights, target, selectionMask);
 }
 
 void OLEDDisplay::drawBarGraph(const std::vector<float>& weights, float target, uint32_t selectionMask) {
