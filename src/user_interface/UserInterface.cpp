@@ -114,7 +114,7 @@ void UserInterface::setupMenuTree() {
     _menu.setRootMenu(root);
 }
 
-void UserInterface::update(const std::vector<float>& weights, float stableSum, float unstableSum, float totalSum, float accumulatedWeight, SystemStatus status, uint32_t selectionMask) {
+void UserInterface::update(const std::vector<float>& weights, float stableSum, float unstableSum, int unstableCount, float totalSum, float accumulatedWeight, uint32_t whitelistMask, SystemStatus status, uint32_t selectionMask) {
     handleInput();
     
     // RS485 诊断屏幕下的 1Hz 脉冲与 RX 监听逻辑
@@ -221,7 +221,7 @@ void UserInterface::update(const std::vector<float>& weights, float stableSum, f
                 if (_currentMode == MODE_ABOUT) {
                     d->drawAbout("v1.5.0", __DATE__);
                 } else {
-                    d->drawDashboard(weights, stableSum, unstableSum, totalSum, accumulatedWeight, _ctx->config.targetMin, _ctx->config.targetMax - _ctx->config.targetMin, status, selectionMask);
+                    d->drawDashboard(weights, stableSum, unstableSum, unstableCount, totalSum, accumulatedWeight, whitelistMask, _ctx->config.targetMin, _ctx->config.targetMax - _ctx->config.targetMin, status, selectionMask);
                 }
                 break;
             case SCREEN_MENU: {

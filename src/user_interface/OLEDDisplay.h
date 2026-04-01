@@ -17,7 +17,7 @@ public:
     void display() override;
     
     void drawSplash(uint32_t elapsedMillis) override;
-    void drawDashboard(const std::vector<float>& weights, float stableSum, float unstableSum, float totalSum, float accumulatedWeight, float target, float tolerance, SystemStatus status, uint32_t selectionMask = 0) override;
+    void drawDashboard(const std::vector<float>& weights, float stableSum, float unstableSum, int unstableCount, float totalSum, float accumulatedWeight, uint32_t whitelistMask, float target, float tolerance, SystemStatus status, uint32_t selectionMask = 0) override;
     void drawMenu(const String& title, const std::vector<String>& items, int cursorIndex, int scrollOffset) override;
     void drawNodeDetail(int id, float weight, bool online) override;
     void drawParamEdit(const String& label, float value, float refValue, bool isMin) override;
@@ -28,11 +28,11 @@ public:
     void drawSequentialProgress(const String& label, int current, int total) override;
 
 private:
-    void drawBarGraph(const std::vector<float>& weights, float target, uint32_t selectionMask = 0);
+    void drawBarGraph(const std::vector<float>& weights, float target, uint32_t selectionMask, uint32_t whitelistMask);
     
     // UI 组件化辅助方法
-    void drawStatusBar(SystemStatus status, float totalSum);
-    void drawWeightDisplay(float stableSum, float unstableSum);
+    void drawStatusBar(SystemStatus status, float totalSum, float accumulatedWeight);
+    void drawWeightDisplay(float stableSum, float unstableSum, int unstableCount);
     void drawProductionSummary(float accumulatedWeight);
 };
 

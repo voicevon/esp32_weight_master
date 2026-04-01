@@ -214,9 +214,11 @@ void uiTask(void* pvParameters) {
         float totalSum = stableSum + unstableSum;
         float localAccumulatedWeight = accumulatedTotalWeight;
         uint32_t localSelectionMask = currentSelectedMask;
+        int localUnstableCount = rs485.getUnstableCount();
+        uint32_t localWhitelistMask = rs485.getWhitelistMask();
         xSemaphoreGive(mutexStatus);
 
-        UserInterface::getInstance()->update(localWeights, displayStable, unstableSum, totalSum, localAccumulatedWeight, localStatus, localSelectionMask);
+        UserInterface::getInstance()->update(localWeights, displayStable, unstableSum, localUnstableCount, totalSum, localAccumulatedWeight, localWhitelistMask, localStatus, localSelectionMask);
 
         vTaskDelay(pdMS_TO_TICKS(33)); // 约 30FPS 刷新率
     }

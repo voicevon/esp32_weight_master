@@ -69,13 +69,13 @@ void OLEDDisplay::drawSplash(uint32_t elapsedMillis) {
     }
 }
 
-void OLEDDisplay::drawDashboard(const std::vector<float>& weights, float stableSum, float unstableSum, float totalSum, float accumulatedWeight, float target, float tolerance, SystemStatus status, uint32_t selectionMask) {
-    drawStatusBar(status, totalSum);
-    drawWeightDisplay(stableSum, unstableSum);
-    drawBarGraph(weights, target, selectionMask);
+void OLEDDisplay::drawDashboard(const std::vector<float>& weights, float stableSum, float unstableSum, int unstableCount, float totalSum, float accumulatedWeight, uint32_t whitelistMask, float target, float tolerance, SystemStatus status, uint32_t selectionMask) {
+    drawStatusBar(status, totalSum, accumulatedWeight);
+    drawWeightDisplay(stableSum, unstableSum, unstableCount);
+    drawBarGraph(weights, target, selectionMask, whitelistMask);
 }
 
-void OLEDDisplay::drawStatusBar(SystemStatus status, float totalSum) {
+void OLEDDisplay::drawStatusBar(SystemStatus status, float totalSum, float accumulatedWeight) {
     _oled.setFont(u8g2_font_wqy12_t_gb2312b);
     
     // 状态映射 (语义更通俗)
@@ -88,6 +88,10 @@ void OLEDDisplay::drawStatusBar(SystemStatus status, float totalSum) {
     
     _oled.setCursor(0, 10);
     _oled.print(statusCn);
+
+    // 累计产量显示 (左上角状态旁)
+    _oled.setCursor(30, 10);
+    _oled.printf("累计:%.0f", accumulatedWeight);
 
     // 全机库存显示
     String totalStr = "库存:" + String((int)(totalSum + 0.5f)) + "g";
@@ -105,7 +109,7 @@ void OLEDDisplay::drawStatusBar(SystemStatus status, float totalSum) {
     }
 }
 
-void OLEDDisplay::drawWeightDisplay(float stableSum, float unstableSum) {
+void OLEDDisplay::drawWeightDisplay(float stableSum, float unstableSum, int unstableCount) {
     // 稳定重量 (中央大字)
     _oled.setFont(u8g2_font_logisoso24_tn);
     int weightValue = (int)(stableSum + 0.5f);
@@ -117,6 +121,12 @@ void OLEDDisplay::drawWeightDisplay(float stableSum, float unstableSum) {
     _oled.setFont(u8g2_font_wqy12_t_gb2312b);
     _oled.print("g");
 
+    // 不稳定数量显示 (左下方)
+    if (unstableCount > 0) {
+        _oled.setCursor(0, 34);
+        _oled.printf("[%d]抖动", unstableCount);
+    }
+
     // 波动/不稳定重量 (中央下方小字)
     if (abs(unstableSum) > 0.5f) {
         _oled.setCursor(85, 34);
@@ -124,7 +134,7 @@ void OLEDDisplay::drawWeightDisplay(float stableSum, float unstableSum) {
     }
 }
 
-void OLEDDisplay::drawBarGraph(const std::vector<float>& weights, float target, uint32_t selectionMask) {
+void OLEDDisplay::drawBarGraph(const std::vector<float>& weights, float target, uint32_t selectionMask, uint32_t whitelistMask) {
     int marginX = 4;
     int graphWidth = 120;
     int maxHeight = 28;
@@ -151,11 +161,17 @@ void OLEDDisplay::drawBarGraph(const std::vector<float>& weights, float target, 
         int x = marginX + (i * spacing);
         
         bool isSelected = (selectionMask >> i) & 1;
+        bool isWhitelisted = (whitelistMask >> i) & 1;
+
+        // 如果在白名单内，绘制底部的指示横线
+        if (isWhitelisted) {
+            _oled.drawHLine(x, bottomY + 1, barWidth);
+        }
 
         if (isSelected) {
-            // 选中状态：实心高亮柱子 + 底部指示框
+            // 选中状态：实心高亮柱子 + 底部指示框 (比白名单横线更厚)
             _oled.drawBox(x, bottomY - h, barWidth, h);
-            _oled.drawFrame(x-1, bottomY + 1, barWidth+2, 2); // 底部高亮条
+            _oled.drawFrame(x-1, bottomY + 1, barWidth+2, 2); 
         } else {
             // 普通状态：空心或浅色柱子
             _oled.drawFrame(x, bottomY - h, barWidth, h);

@@ -35,6 +35,7 @@ public:
     bool isStable(int id);
     uint8_t getDoorPhase(int id);
     bool isNodeOnline(int id);
+    int getUnstableCount() const { return _unstableCount; } // 新增：正在抖动的节点数量
     const bool* getOnlineStatusArray() const { return _onlineStatus; }
     
     // 状态机管理接口
@@ -62,6 +63,7 @@ public:
     void savePollWhitelist();
     void loadPollWhitelist();
     bool isWhitelisted(int id) const { return (id >= 1 && id <= 20) ? _pollWhitelist[id] : false; }
+    uint32_t getWhitelistMask() const; // 新增：获取所有节点的白名单状态位集
 
 private:
     int _rxPin, _txPin, _enPin;
@@ -77,10 +79,13 @@ private:
     float _cachedWeights[21]; 
     bool _isStable[21];
     uint8_t _doorPhases[21];
+    uint16_t _lastDataIds[21];   // 最新读到的 ID
+    uint16_t _targetDataIds[21]; // 期待达到的新鲜 ID
+    
     bool _onlineStatus[21];
     bool _pollWhitelist[21]; // 通讯白名单：仅名单内节点参与普通轮询
     NodeStatus _nodeStatus[21]; // 节点级状态机缓存
-    uint16_t _tempRegs[3];     
+    uint16_t _tempRegs[6];     
     
     // 统计项
     uint32_t _packetsSent = 0;
@@ -88,6 +93,7 @@ private:
     uint8_t _failCounters[21];       // Consecutive failures per node
     uint32_t _nodeErrorStats[21];    // Cumulative errors per node
     Modbus::ResultCode _nodeLastResult[21]; // Latest error code per node
+    int _unstableCount = 0; // 新增：正在抖动的节点数量
 
     bool _isScanning = false;
     int _scanProgress = 0;

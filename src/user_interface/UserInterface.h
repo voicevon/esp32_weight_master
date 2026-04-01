@@ -54,7 +54,7 @@ public:
     void initialize(SystemContext* ctx, ModbusMaster* rs485);
     void addDisplay(Display* display);
     
-    void update(const std::vector<float>& weights, float stableSum, float unstableSum, float totalSum, float accumulatedWeight, SystemStatus status, uint32_t selectionMask = 0);
+    void update(const std::vector<float>& weights, float stableSum, float unstableSum, int unstableCount, float totalSum, float accumulatedWeight, uint32_t whitelistMask, SystemStatus status, uint32_t selectionMask);
     
     void setMode(OperationMode mode) { _currentMode = mode; }
     OperationMode getMode() const { return _currentMode; }
