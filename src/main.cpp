@@ -9,6 +9,7 @@
 #include "system/SystemContext.h"
 #include "logic/CombinationEngine.h"
 #include "logic/ConveyorController.h"
+#include "system/PollManager.h"
 
 // --- Global Manager Instances ---
 HardwareManager hw;
@@ -31,36 +32,51 @@ SemaphoreHandle_t mutexParams;
 SemaphoreHandle_t mutexWeights; 
 SemaphoreHandle_t mutexStatus;  
 
-// 初始化 ModbusMaster, RS485_RX, TX, TX_EN(-1), BAUD
+// 初始化 ModbusMaster
 ModbusMaster rs485(PIN_RS485_RX, PIN_RS485_TX, PIN_RS485_TX_EN, RS485_BAUD);
+
+// 初始化业务调度中心 (PollManager)
+PollManager pollManager(&rs485);
 
 // 初始化其他业务对象
 CombinationEngine engine(290.0f, 310.0f); 
 ConveyorController conveyor(&rs485, MOTOR_ID_BELT1, MOTOR_ID_BELT2);
 
 // --- Task Definitions ---
+// --- 辅助：将 OperationMode 枚举转换为可读字符串 ---
+static const char* operationModeToStr(OperationMode m) {
+    switch (m) {
+        case MODE_IDLE:              return "IDLE";
+        case MODE_PRODUCTION:        return "PRODUCTION";
+        case MODE_DIAG_PULSE:        return "DIAG_PULSE";
+        case MODE_DIAG_SCAN:         return "DIAG_SCAN";
+        case MODE_DIAG_DETAIL:       return "DIAG_DETAIL";
+        case MODE_CONFIGURATION:     return "CONFIGURATION";
+        case MODE_SEQUENTIAL_CTRL:   return "SEQUENTIAL_CTRL";
+        case MODE_ABOUT:             return "ABOUT";
+        default:                     return "UNKNOWN";
+    }
+}
+
 // --- 全局管理：统一切换运行模式 ---
 void updateOperationMode(OperationMode newMode) {
     if (globalCtx.state.curMode == newMode) return;
     
-    Serial.printf("[SYSTEM] Mode Changing: %d -> %d\n", globalCtx.state.curMode, newMode);
+    Serial.printf("[SYSTEM] Mode Changing: %s -> %s\n",
+                  operationModeToStr(globalCtx.state.curMode),
+                  operationModeToStr(newMode));
     
     // 退出旧模式的清理
     if (globalCtx.state.curMode == MODE_DIAG_SCAN || globalCtx.state.curMode == MODE_DIAG_PULSE) {
         rs485.clearRawBuffer();
     }
     
-    // 进入新模式的初始化
-    if (newMode == MODE_DIAG_SCAN) {
-        rs485.startScan();
-    }
-    
     xSemaphoreTake(mutexStatus, portMAX_DELAY);
     globalCtx.state.curMode = newMode;
     xSemaphoreGive(mutexStatus);
 
-    // 同步模式到 ModbusMaster 内部任务
-    rs485.update(newMode);
+    // 同步新模式到 PollManager (调度中心)
+    pollManager.setMode(newMode);
 }
 
 void controlTask(void* pvParameters) {
@@ -103,14 +119,15 @@ void controlTask(void* pvParameters) {
         }
 
 
-        // 2. Modbus 相关业务逻辑处理
+        // 2. Modbus 调度与业务处理
+        pollManager.process(); 
         
         if (mode == MODE_PRODUCTION) {
-            // 更新本地重量缓存
+            // 从 PollManager 获取最新数据
             xSemaphoreTake(mutexWeights, portMAX_DELAY);
             for (int i = 0; i < NUM_SLAVES; i++) {
-                slaveWeights[i] = rs485.getWeight(i + 1);
-                slaveStable[i] = rs485.isStable(i + 1);
+                slaveWeights[i] = pollManager.getWeight(i + 1);
+                slaveStable[i] = pollManager.isStable(i + 1);
             }
             xSemaphoreGive(mutexWeights);
 
@@ -138,7 +155,7 @@ void controlTask(void* pvParameters) {
                     std::vector<int> activeIds;
                     for (int i = 0; i < NUM_SLAVES; i++) {
                         int id = i + 1;
-                        if (slaveStable[i] && rs485.getNodeStatus(id) == NODE_STABLE && rs485.isWhitelisted(id)) {
+                        if (slaveStable[i] && pollManager.getNodeStatus(id) == NODE_STABLE && pollManager.isWhitelisted(id)) {
                             activeWeights.push_back(slaveWeights[i]);
                             activeIds.push_back(id);
                         }
@@ -157,18 +174,18 @@ void controlTask(void* pvParameters) {
                         currentSelectedMask = 0;
                         std::vector<int> mappedIds;
                         for (int idx_in_active : res.selectedIndices) {
-                            int physicalId = activeIds[idx_in_active - 1];
+                            int physicalId = activeIds[idx_in_active];
                             mappedIds.push_back(physicalId);
                             currentSelectedMask |= (1 << (physicalId - 1));
-                            rs485.setNodeStatus(physicalId, NODE_LOCKED);
+                            pollManager.setNodeStatus(physicalId, NODE_LOCKED);
                         }
                         xSemaphoreGive(mutexStatus);
 
                         Serial.printf("[AUTO] Combination Found: %.1f g, Mask: 0x%08X\n", res.totalWeight, currentSelectedMask);
-                        for (int id : mappedIds) rs485.openDischarge1S(id); 
+                        for (int id : mappedIds) rs485.syncWrite(id, 0x0100, 5); // 0x0100=5: 脉冲开门 1S
                         vTaskDelay(pdMS_TO_TICKS(DISCHARGE_SETTLE_MS));
 
-                        for (int id : mappedIds) rs485.setNodeStatus(id, NODE_DIRTY);
+                        for (int id : mappedIds) pollManager.setNodeStatus(id, NODE_DIRTY);
 
                         xSemaphoreTake(mutexParams, portMAX_DELAY);
                         accumulatedTotalWeight += res.totalWeight;
@@ -216,21 +233,20 @@ void uiTask(void* pvParameters) {
         globalCtx.state.selectionMask = currentSelectedMask;
         globalCtx.state.status = systemStatus; // 同步内部业务状态
         
-        // 扫描进度同步 (rs485.update 会更新这些底层数据)
-        globalCtx.state.scanProgress = rs485.getScanProgress();
-        globalCtx.state.currentScanCycle = rs485.getCurrentScanCycle();
+        // 扫描进度同步 (数据源切换为 pollManager)
+        globalCtx.state.scanProgress = pollManager.getScanProgress();
+        globalCtx.state.currentScanCycle = pollManager.getScanCycle();
         
-        const bool (*history)[21] = rs485.getScanHistory();
+        // 扫描历史记录转换
         for(int c=0; c<5; c++) {
             for(int i=0; i<20; i++) {
-                globalCtx.state.scanResults[c][i] = history[c][i+1];
+                globalCtx.state.scanResults[c][i] = pollManager.getScanHistory(c, i + 1);
             }
         }
 
-        const bool* online = rs485.getOnlineStatusArray();
         for(int i=0; i<20; i++) {
-            globalCtx.state.onlineNodes[i] = online[i+1]; 
-            globalCtx.state.whitelistedNodes[i] = rs485.isWhitelisted(i+1);
+            globalCtx.state.onlineNodes[i] = pollManager.isOnline(i+1); 
+            globalCtx.state.whitelistedNodes[i] = pollManager.isWhitelisted(i+1);
         }
         xSemaphoreGive(mutexStatus);
 
@@ -242,7 +258,7 @@ void uiTask(void* pvParameters) {
 }
 
 void cmdGlobalTare() {
-    rs485.broadcastTare();
+    rs485.broadcastWrite(0x0100, 3); // 0x0100=3: 广播去皮指令
 }
 
 void cmdStartScan() {
@@ -301,8 +317,9 @@ void setup() {
         while(1) delay(100);
     }
 
-    // 2. 初始化 RS485 总线和外设
+    // 2. 初始化 RS485 总线、业务调度中心和外设
     rs485.begin();
+    pollManager.begin();
     conveyor.begin();
     systemStatus = SYS_READY;
     

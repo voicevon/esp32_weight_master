@@ -6,7 +6,7 @@
 struct CombinationResult {
     bool success;
     float totalWeight;
-    std::vector<int> selectedIndices; // 1-based IDs
+    std::vector<int> selectedIndices; // 0-based index into the input weights vector
 };
 
 class CombinationEngine {

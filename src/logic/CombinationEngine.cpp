@@ -47,7 +47,7 @@ CombinationResult CombinationEngine::findBestCombination(const std::vector<float
             if (nodes[i].weight >= _minWeight && nodes[i].weight <= _maxWeight) {
                 result.success = true;
                 result.totalWeight = nodes[i].weight;
-                result.selectedIndices = {nodes[i].index + 1};
+                result.selectedIndices = {nodes[i].index};
                 return result;
             }
         }
@@ -96,7 +96,7 @@ CombinationResult CombinationEngine::findBestCombination(const std::vector<float
     result.success = true;
     result.totalWeight = currentSum;
     for (int node_idx : selections) {
-        result.selectedIndices.push_back(nodes[node_idx].index + 1);
+        result.selectedIndices.push_back(nodes[node_idx].index);
     }
 
     return result;
