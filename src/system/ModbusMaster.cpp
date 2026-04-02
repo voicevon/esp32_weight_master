@@ -31,8 +31,8 @@ ModbusMaster::ModbusMaster(int rxPin, int txPin, int enPin, long baud)
 }
 
 void ModbusMaster::begin() {
-    Serial2.begin(_baud, SERIAL_8N1, _rxPin, _txPin);
-    _mb.begin(&Serial2, _enPin);
+    Serial1.begin(_baud, SERIAL_8N1, _rxPin, _txPin);
+    _mb.begin(&Serial1, _enPin);
     _mb.master();
     loadPollWhitelist();
 }
@@ -74,8 +74,17 @@ void ModbusMaster::update() {
                 _failCounters[id]++;
                 
                 if (_isScanning) {
+                    _scanHistory[_scanCycle][id] = false; // 记录当前轮次的在线情况
                     _scanProgress++;
-                    if (_scanProgress > 20) _isScanning = false;
+                    if (_scanProgress > 20) {
+                        _scanCycle++;
+                        if (_scanCycle >= 5) {
+                            _isScanning = false;
+                            generateWhitelistFromScan();
+                        } else {
+                            _scanProgress = 1; // 进入下一轮
+                        }
+                    }
                 } else {
                     _currentPollId = (_currentPollId % 20) + 1;
                 }
@@ -158,8 +167,17 @@ bool ModbusMaster::cbPoll(Modbus::ResultCode event, uint16_t transactionId, void
     }
 
     if (instance->_isScanning) {
+        instance->_scanHistory[instance->_scanCycle][id] = (event == Modbus::EX_SUCCESS);
         instance->_scanProgress++;
-        if (instance->_scanProgress > 20) instance->_isScanning = false;
+        if (instance->_scanProgress > 20) {
+            instance->_scanCycle++;
+            if (instance->_scanCycle >= 5) {
+                instance->_isScanning = false;
+                instance->generateWhitelistFromScan();
+            } else {
+                instance->_scanProgress = 1; // 进入下一轮
+            }
+        }
     } else {
         instance->_currentPollId = (instance->_currentPollId % 20) + 1;
     }
@@ -264,10 +282,32 @@ bool ModbusMaster::setPosition(int id, long position, int speed) {
 void ModbusMaster::startScan() {
     _isScanning = true;
     _scanProgress = 1;
+    _scanCycle = 0;
+    // 重置历史记录数组
+    for (int c = 0; c < 5; c++) {
+        for (int i = 0; i < 21; i++) {
+            _scanHistory[c][i] = false;
+        }
+    }
 }
 
 void ModbusMaster::stopScan() {
     _isScanning = false;
+}
+
+void ModbusMaster::generateWhitelistFromScan() {
+    // 逻辑：只有在 5 次扫描中全部在线的节点才加入白名单
+    for (int i = 1; i <= 20; i++) {
+        bool allPass = true;
+        for (int c = 0; c < 5; c++) {
+            if (!_scanHistory[c][i]) {
+                allPass = false;
+                break;
+            }
+        }
+        _pollWhitelist[i] = allPass;
+    }
+    savePollWhitelist();
 }
 
 void ModbusMaster::savePollWhitelist() {
@@ -298,15 +338,15 @@ bool ModbusMaster::performLoopbackTest() {
 }
 
 void ModbusMaster::sendRawByte(uint8_t byte) {
-    Serial2.write(byte);
+    Serial1.write(byte);
 }
 
 int ModbusMaster::availableRaw() {
-    return Serial2.available();
+    return Serial1.available();
 }
 
 uint8_t ModbusMaster::readRawByte() {
-    return Serial2.read();
+    return Serial1.read();
 }
 
 uint32_t ModbusMaster::getWhitelistMask() const {

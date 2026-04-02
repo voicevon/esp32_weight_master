@@ -2,29 +2,26 @@
 #define PIN_DEFINITION_H
 
 /* 
- * ESP32 Weight Master - 硬件引脚与寄存器统一定义
- * 本文件由 Antigravity 自动生成，用于解耦机械布局文档与代码实现。
+ * ESP32-S3 Weight Master - 硬件引脚与寄存器统一定义
+ * 本文件管理业务层的引脚常量。LCD 和 Touch 的引脚归 HardwareManager 管。
  */
 
-// --- I2C 显示屏 (OLED 128x64) ---
-#define PIN_I2C_SDA      23
-#define PIN_I2C_SCL      22
-
-// --- RS485 通信 (Serial 2) ---
-#define PIN_RS485_RX     16
-#define PIN_RS485_TX     17
-#define PIN_RS485_TX_EN  5     // 逻辑：HIGH 为发送，LOW 为接收
+// --- RS485 通信 (Serial 1/2) ---
+// 根据 esp32_s3_lcd 的通信验证基础，RX:15，TX:16
+#define PIN_RS485_RX     15
+#define PIN_RS485_TX     16
+#define PIN_RS485_TX_EN  -1    // S3的485模块自带自动收发切换？暂时置-1，需结合硬件确认
 #define RS485_TX_ENABLE  HIGH 
 #define RS485_RX_ENABLE  LOW  
 #define RS485_BAUD       9600
 
-// --- 旋转编码器 (HMI 交互) ---
-#define PIN_ENCODER_A       18  
-#define PIN_ENCODER_B       19  
-#define PIN_ENCODER_BUTTON  21  
+// --- 旋转编码器 (HMI 交互 - 在新大屏中可能不再需要，暂时保留防止编译报错) ---
+#define PIN_ENCODER_A       -1
+#define PIN_ENCODER_B       -1  
+#define PIN_ENCODER_BUTTON  -1  
 
 // --- 从机与电机 ID 分配 ---
-#define NUM_SLAVES      20  // 称重单元总数 (1-20)
+#define NUM_SLAVES      20  // 称重单元总数 (1-10，或者之前的 20)
 #define MOTOR_ID_BELT1  21  // 收集带 (一级)
 #define MOTOR_ID_BELT2  22  // 输出带 (二级)
 

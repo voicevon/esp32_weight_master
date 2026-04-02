@@ -29,6 +29,8 @@ public:
     void stopScan();  // 中止全量扫描
     bool isScanning() const { return _isScanning; }
     int getScanProgress() const { return _scanProgress; }
+    int getCurrentScanCycle() const { return _scanCycle; }
+    const bool (*getScanHistory())[21] { return _scanHistory; } // 返回 5x21 历史记录数组
 
     // 获取缓存数据（非阻塞）
     float getWeight(int id);
@@ -62,6 +64,7 @@ public:
     // 白名单管理
     void savePollWhitelist();
     void loadPollWhitelist();
+    void generateWhitelistFromScan();
     bool isWhitelisted(int id) const { return (id >= 1 && id <= 20) ? _pollWhitelist[id] : false; }
     uint32_t getWhitelistMask() const; // 新增：获取所有节点的白名单状态位集
 
@@ -97,6 +100,8 @@ private:
 
     bool _isScanning = false;
     int _scanProgress = 0;
+    int _scanCycle = 0;       // 当前重试轮次 0-4
+    bool _scanHistory[5][21]; // 记录 5 轮扫描中每一轮的在线状态
 
     bool waitTransaction(uint8_t id);
     static ModbusMaster* _instance;
