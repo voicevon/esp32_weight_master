@@ -35,39 +35,47 @@ void ModbusMaster::begin() {
     _mb.begin(&Serial1, _enPin);
     _mb.master();
     loadPollWhitelist();
+
+    // 启动后台高优先级通讯任务 (核心 1, 优先级 15)
+    xTaskCreatePinnedToCore(
+        modbusTask,
+        "MB_Task",
+        4096,
+        this,
+        15,
+        &_taskHandle,
+        1
+    );
 }
 
 void ModbusMaster::update(OperationMode curMode) {
-    _currentMode = curMode; // 统一状态记录
-    if (xSemaphoreTake(_mutexBus, pdMS_TO_TICKS(10)) != pdTRUE) return; 
-    
-    // 基础协议栈心跳 (只要不是 1Hz 原始脉冲诊断，就允许 Modbus 协议栈运行)
-    if (curMode != MODE_DIAG_PULSE) {
-        _mb.task(); 
+    // 现在 update 仅作为模式切换的入口
+    _currentMode = curMode; 
+}
+
+void ModbusMaster::modbusTask(void* param) {
+    ModbusMaster* instance = (ModbusMaster*)param;
+    Serial.println("[MB] Internal Task Started");
+
+    while (true) {
+        // 核心步进：10ms 周期，确保协议栈响应及时
+        if (xSemaphoreTake(instance->_mutexBus, pdMS_TO_TICKS(10)) == pdTRUE) {
+            OperationMode mode = instance->_currentMode;
+            
+            // 1. 基础协议栈心跳
+            if (mode != MODE_DIAG_PULSE) {
+                instance->_mb.task(); 
+            }
+
+            // 2. 根据模式执行自动轮询
+            if (mode == MODE_DIAG_SCAN || mode == MODE_PRODUCTION) {
+                instance->handlePollingCycle(mode);
+            }
+
+            xSemaphoreGive(instance->_mutexBus);
+        }
+        vTaskDelay(pdMS_TO_TICKS(10)); 
     }
-
-    // 根据模式决定资源分发策略
-    switch (curMode) {
-        case MODE_DIAG_PULSE:
-            // 诊模式完全接管总线，不进行任何自动 Modbus 轮询
-            _status = ST_IDLE;
-            break;
-
-        case MODE_DIAG_SCAN:
-        case MODE_PRODUCTION:
-            // 扫描模式和生产模式共用轮询状态机，但 ID 来源不同
-            handlePollingCycle(curMode);
-            break;
-
-        case MODE_CONFIGURATION:
-        case MODE_IDLE:
-        default:
-            // 配置菜单或其他后台模式下，建议停止自动轮询以腾出 CPU/总线资源
-            _status = ST_IDLE;
-            break;
-    }
-    
-    xSemaphoreGive(_mutexBus);
 }
 
 void ModbusMaster::handlePollingCycle(OperationMode curMode) {

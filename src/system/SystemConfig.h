@@ -15,7 +15,7 @@
 #define BELT_STEP_PERIOD_MS         1200  // 输出输送带 (Belt 2) 步进时长
 
 // --- 通讯超时与重试 ---
-#define MODBUS_POLL_TIMEOUT_MS      1500  // 单个节点轮询超时上限 (调整为 1.5s，兼顾稳定与响应)
+#define MODBUS_POLL_TIMEOUT_MS      1000  // 单个节点轮询超时上限 (1s)
 #define MODBUS_SUCCESS_COUNTER      1     // 启用从机请求成功计数器
 #define MODBUS_SERIAL_BAUD          9600  // RS485 总线波特率
 

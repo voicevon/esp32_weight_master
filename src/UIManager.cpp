@@ -52,14 +52,16 @@ void UIManager::init() {
     // Indicator for active tab
     lv_obj_set_style_bg_color(tab_btns, lv_color_hex(0x38BDF8), LV_PART_INDICATOR);
 
+    lv_obj_set_style_border_width(tabview, 0, 0); // Remove tabview border
+    lv_obj_set_size(tabview, 800, 480);           // Explicit Full Screen
+
     dashboard_tab = lv_tabview_add_tab(tabview, "配重机平台");
     user_tab = lv_tabview_add_tab(tabview, "用户设置");
     admin_tab = lv_tabview_add_tab(tabview, "系统维护");
 
-    // Remove pad for full usage
+    // Remove pad for full usage, ensures no "lines" from padding/borders
     lv_obj_set_style_pad_all(dashboard_tab, 0, 0);
-    lv_obj_set_style_pad_all(user_tab, 10, 0);
-    lv_obj_set_style_pad_all(admin_tab, 20, 0);
+    lv_obj_set_style_border_width(dashboard_tab, 0, 0);
 
     buildDashboardView(dashboard_tab);
     buildUserSettingsView(user_tab);
@@ -114,22 +116,23 @@ void UIManager::buildDashboardView(lv_obj_t* parent) {
     lv_obj_set_style_bg_color(graph_container, lv_color_hex(0x0F172A), 0); // Slate Background
     lv_obj_set_style_border_width(graph_container, 0, 0);
     lv_obj_set_style_pad_all(graph_container, 0, 0);
-    // Flex Layout for columns
+    // Flex Layout for columns: Use Center to avoid left-overflow and explicit small gap
     lv_obj_set_flex_flow(graph_container, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(graph_container, LV_FLEX_ALIGN_SPACE_AROUND, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_flex_align(graph_container, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(graph_container, 2, 0); // 2px gap as requested
 
     for(int i = 0; i < NUM_SLAVES; i++) {
         if (i >= 20) break;
         
         lv_obj_t* col = lv_obj_create(graph_container);
-        lv_obj_set_size(col, 40, 180);
-        lv_obj_set_style_bg_color(col, lv_color_hex(0x0F172A), 0);
+        lv_obj_set_size(col, 38, 180); // Narrower col wrapper
+        lv_obj_set_style_bg_opa(col, 0, 0); // Transparent col wrapper
         lv_obj_set_style_border_width(col, 0, 0);
         lv_obj_set_style_pad_all(col, 0, 0);
 
         // Bar
         lv_obj_t* bar = lv_bar_create(col);
-        lv_obj_set_size(bar, 20, 120);
+        lv_obj_set_size(bar, 34, 120); // Much thicker bar (34px vs 20px)
         lv_obj_align(bar, LV_ALIGN_TOP_MID, 0, 0);
         lv_bar_set_range(bar, 0, 500); // Ex: Max expected weight per bucket is 500g
         lv_bar_set_value(bar, 0, LV_ANIM_OFF);
@@ -470,19 +473,25 @@ void UIManager::updateDashboard(const SystemContext* ctx) {
         snprintf(buf, sizeof(buf), "%.0f", weight);
         lv_label_set_text(node_weight_labels[i], buf);
 
-        // Colors
-        if (mask & (1 << i)) {
-            // Selected -> Bright Green
-            lv_obj_set_style_bg_color(node_bars[i], lv_color_hex(0x22C55E), LV_PART_INDICATOR);
-            lv_obj_set_style_text_color(node_weight_labels[i], lv_color_hex(0x22C55E), 0);
-        } else if (ctx->state.stableNodes[i]) {
-            // Stable -> Slate Gray/Blueish
-            lv_obj_set_style_bg_color(node_bars[i], lv_color_hex(0x64748B), LV_PART_INDICATOR);
-            lv_obj_set_style_text_color(node_weight_labels[i], lv_color_white(), 0);
+        // Background Colors (LV_PART_MAIN) based on Whitelist
+        if (ctx->state.whitelistedNodes[i]) {
+            lv_obj_set_style_bg_color(node_bars[i], lv_color_hex(0x064E3B), LV_PART_MAIN); // Dark Green
         } else {
-            // Unstable/Error -> Dark Red or Darker default
-            lv_obj_set_style_bg_color(node_bars[i], lv_color_hex(0x7F1D1D), LV_PART_INDICATOR); // Dark Red
-            lv_obj_set_style_text_color(node_weight_labels[i], lv_color_hex(0x7F1D1D), 0); 
+            lv_obj_set_style_bg_color(node_bars[i], lv_color_hex(0x7F1D1D), LV_PART_MAIN); // Dark Red
+        }
+
+        // Value Colors & Indicators
+        lv_obj_set_style_text_color(node_weight_labels[i], lv_color_hex(0x22C55E), 0); // Bright Green text
+        
+        if (mask & (1 << i)) {
+            // Selected -> Bright Green Highlight
+            lv_obj_set_style_bg_color(node_bars[i], lv_color_hex(0x22C55E), LV_PART_INDICATOR);
+        } else if (ctx->state.stableNodes[i]) {
+            // Stable -> Normal Greenish
+            lv_obj_set_style_bg_color(node_bars[i], lv_color_hex(0x10B981), LV_PART_INDICATOR);
+        } else {
+            // Unstable/Inactive -> Gray indicator
+            lv_obj_set_style_bg_color(node_bars[i], lv_color_hex(0x475569), LV_PART_INDICATOR);
         }
     }
 

@@ -13,7 +13,7 @@ enum OperationMode {
     MODE_DIAG_DETAIL,   // 诊断：节点详情查看
     MODE_CONFIGURATION, // 配置模式
     MODE_SEQUENTIAL_CTRL, // 序列化控制模式 (开/关/置零)
-    MODE_ABOUT          // 关于界面
+    MODE_ABOUT           // 关于界面
 };
 
 /**

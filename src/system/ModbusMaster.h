@@ -113,6 +113,8 @@ private:
     int _scanCycle = 0;       // 当前重试轮次 0-4
     bool _scanHistory[5][21]; // 记录 5 轮扫描中每一轮的在线状态
 
+    static void modbusTask(void* param); // 内部高优先级通讯任务入口
+    TaskHandle_t _taskHandle = NULL;
     SemaphoreHandle_t _mutexBus; // 保护底层 Modbus 对象和状态机
 };
 

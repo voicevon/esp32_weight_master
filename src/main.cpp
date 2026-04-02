@@ -58,6 +58,9 @@ void updateOperationMode(OperationMode newMode) {
     xSemaphoreTake(mutexStatus, portMAX_DELAY);
     globalCtx.state.curMode = newMode;
     xSemaphoreGive(mutexStatus);
+
+    // 同步模式到 ModbusMaster 内部任务
+    rs485.update(newMode);
 }
 
 void controlTask(void* pvParameters) {
@@ -99,8 +102,8 @@ void controlTask(void* pvParameters) {
             continue;
         }
 
-        // 2. Modbus 相关模式 (生产或扫描)
-        rs485.update(mode);
+
+        // 2. Modbus 相关业务逻辑处理
         
         if (mode == MODE_PRODUCTION) {
             // 更新本地重量缓存
@@ -227,6 +230,7 @@ void uiTask(void* pvParameters) {
         const bool* online = rs485.getOnlineStatusArray();
         for(int i=0; i<20; i++) {
             globalCtx.state.onlineNodes[i] = online[i+1]; 
+            globalCtx.state.whitelistedNodes[i] = rs485.isWhitelisted(i+1);
         }
         xSemaphoreGive(mutexStatus);
 
@@ -325,9 +329,10 @@ void setup() {
 
     Serial.println("[SYSTEM] Dual-Core Mutlitasking Started");
     
-    // [DIAGNOSTIC] 自动启动全量扫描，以便观察总线状态
-    delay(2000); // 等待任务稳定
-    cmdStartScan();
+    // [DIAGNOSTIC] 启动后直接进入生产模式（Dashboard 界面），不再进行全量自动扫描
+    // 用户如需重新探测节点，可在“系统维护”菜单中手动发起
+    delay(500); // 等待任务稳定
+    updateOperationMode(MODE_PRODUCTION);
 }
 
 void loop() {

@@ -31,6 +31,7 @@ struct RuntimeState {
     int scanProgress;         // 当前轮扫描进度 0-20
     int currentScanCycle;     // 当前重试轮次 0-4
     bool onlineNodes[20];     // 实时在线状态 (兼容原有逻辑)
+    bool whitelistedNodes[20]; // 白名单状态 (用于变色)
     bool scanResults[5][20];  // 5轮扫描的完整历史记录
     
     // --- 诊断模式状态 ---
