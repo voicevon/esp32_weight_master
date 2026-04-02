@@ -5,7 +5,8 @@
 UIManager::UIManager() {
     tabview = nullptr;
     dashboard_tab = nullptr;
-    settings_tab = nullptr;
+    user_tab = nullptr;
+    admin_tab = nullptr;
     status_label = nullptr;
     accu_weight_label = nullptr;
     target_label = nullptr;
@@ -16,32 +17,39 @@ UIManager::UIManager() {
         node_bars[i] = nullptr;
         node_weight_labels[i] = nullptr;
     }
-    scan_table = nullptr;
     scan_confirm_btn = nullptr;
+    diag_tx_label = nullptr;
+    diag_rx_label = nullptr;
+    diag_switch = nullptr;
 }
 
 void UIManager::init() {
-    lv_obj_set_style_bg_color(lv_scr_act(), lv_color_hex(0x020617), 0); 
+    lv_obj_set_style_bg_color(lv_scr_act(), lv_color_hex(0x0F172A), 0); // Deep Slate Background
 
     // Tabview
     tabview = lv_tabview_create(lv_scr_act(), LV_DIR_TOP, 0);
-    lv_obj_set_style_bg_color(tabview, lv_color_hex(0x020617), 0);
+    lv_obj_set_style_bg_color(tabview, lv_color_hex(0x0F172A), 0);
     lv_obj_t* tab_btns = lv_tabview_get_tab_btns(tabview);
-    lv_obj_set_style_bg_color(tab_btns, lv_color_hex(0x0F172A), 0);
+    lv_obj_set_style_bg_color(tab_btns, lv_color_hex(0x1E293B), 0); // Lighter slate for header
     lv_obj_set_style_text_color(tab_btns, lv_color_white(), 0);
     lv_obj_set_style_text_font(tab_btns, &ui_font_chs_16, 0);
+    // Indicator for active tab
+    lv_obj_set_style_bg_color(tab_btns, lv_color_hex(0x38BDF8), LV_PART_INDICATOR);
 
     dashboard_tab = lv_tabview_add_tab(tabview, "配重机平台");
-    settings_tab = lv_tabview_add_tab(tabview, "设置");
+    user_tab = lv_tabview_add_tab(tabview, "用户设置");
+    admin_tab = lv_tabview_add_tab(tabview, "系统维护");
 
     // Remove pad for full usage
     lv_obj_set_style_pad_all(dashboard_tab, 0, 0);
-    lv_obj_set_style_pad_all(settings_tab, 10, 0);
+    lv_obj_set_style_pad_all(user_tab, 10, 0);
+    lv_obj_set_style_pad_all(admin_tab, 20, 0);
 
     buildDashboardView(dashboard_tab);
-    buildSettingsView(settings_tab);
+    buildUserSettingsView(user_tab);
+    buildAdminView(admin_tab);
 
-    Serial.println("[UI] Bar Graph Dashboard initialized.");
+    Serial.println("[UI] Triple-tab UI initialized (Dashboard/User/Admin).");
 }
 
 void UIManager::buildDashboardView(lv_obj_t* parent) {
@@ -54,13 +62,13 @@ void UIManager::buildDashboardView(lv_obj_t* parent) {
 
     status_label = lv_label_create(header);
     lv_obj_set_style_text_font(status_label, &ui_font_chs_16, 0);
-    lv_obj_set_style_text_color(status_label, lv_color_hex(0x94A3B8), 0);
+    lv_obj_set_style_text_color(status_label, lv_color_hex(0xE2E8F0), 0); // Lighter for visibility
     lv_label_set_text(status_label, "系统初始化"); 
     lv_obj_align(status_label, LV_ALIGN_LEFT_MID, 10, 0);
 
     accu_weight_label = lv_label_create(header);
     lv_obj_set_style_text_font(accu_weight_label, &ui_font_chs_16, 0);
-    lv_obj_set_style_text_color(accu_weight_label, lv_color_hex(0xE2E8F0), 0);
+    lv_obj_set_style_text_color(accu_weight_label, lv_color_white(), 0); // White for primary data
     lv_label_set_text(accu_weight_label, "总产量: 0.0g");
     lv_obj_align(accu_weight_label, LV_ALIGN_CENTER, 0, 0);
 
@@ -74,7 +82,7 @@ void UIManager::buildDashboardView(lv_obj_t* parent) {
     lv_obj_t* center_area = lv_obj_create(parent);
     lv_obj_set_size(center_area, 800, 160);
     lv_obj_align(center_area, LV_ALIGN_TOP_MID, 0, 60);
-    lv_obj_set_style_bg_color(center_area, lv_color_hex(0x020617), 0);
+    lv_obj_set_style_bg_color(center_area, lv_color_hex(0x0F172A), 0); // Slate Background
     lv_obj_set_style_border_width(center_area, 0, 0);
 
     huge_combo_label = lv_label_create(center_area);
@@ -87,7 +95,7 @@ void UIManager::buildDashboardView(lv_obj_t* parent) {
     lv_obj_t* graph_container = lv_obj_create(parent);
     lv_obj_set_size(graph_container, 800, 200);
     lv_obj_align(graph_container, LV_ALIGN_TOP_MID, 0, 220);
-    lv_obj_set_style_bg_color(graph_container, lv_color_hex(0x020617), 0);
+    lv_obj_set_style_bg_color(graph_container, lv_color_hex(0x0F172A), 0); // Slate Background
     lv_obj_set_style_border_width(graph_container, 0, 0);
     lv_obj_set_style_pad_all(graph_container, 0, 0);
     // Flex Layout for columns
@@ -99,7 +107,7 @@ void UIManager::buildDashboardView(lv_obj_t* parent) {
         
         lv_obj_t* col = lv_obj_create(graph_container);
         lv_obj_set_size(col, 40, 180);
-        lv_obj_set_style_bg_color(col, lv_color_hex(0x020617), 0);
+        lv_obj_set_style_bg_color(col, lv_color_hex(0x0F172A), 0);
         lv_obj_set_style_border_width(col, 0, 0);
         lv_obj_set_style_pad_all(col, 0, 0);
 
@@ -144,29 +152,29 @@ static void btn_scan_event_cb(lv_event_t * e) {
     cmdStartScan();
 }
 
-void UIManager::buildSettingsView(lv_obj_t* parent) {
+void UIManager::buildUserSettingsView(lv_obj_t* parent) {
     lv_obj_set_flex_flow(parent, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(parent, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START);
 
-    // Action Row 1
+    // Action Row 1: Commands
     lv_obj_t* row1 = lv_obj_create(parent);
-    lv_obj_set_size(row1, 600, 80);
+    lv_obj_set_size(row1, 600, 100);
     lv_obj_set_style_border_width(row1, 0, 0);
-    lv_obj_set_style_bg_color(row1, lv_color_hex(0x020617), 0);
+    lv_obj_set_style_bg_color(row1, lv_color_hex(0x0F172A), 0);
     lv_obj_set_flex_flow(row1, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(row1, LV_FLEX_ALIGN_SPACE_AROUND, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
     lv_obj_t* btn_tare = lv_btn_create(row1);
-    lv_obj_set_size(btn_tare, LV_PCT(40), 60);
+    lv_obj_set_size(btn_tare, LV_PCT(40), 70);
     lv_obj_set_style_bg_color(btn_tare, lv_color_hex(0x2563EB), 0);
     lv_obj_add_event_cb(btn_tare, btn_tare_event_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t* lbl_tare = lv_label_create(btn_tare);
     lv_obj_set_style_text_font(lbl_tare, &ui_font_chs_16, 0);
-    lv_label_set_text(lbl_tare, "全局置零总线");
+    lv_label_set_text(lbl_tare, "全局置零");
     lv_obj_center(lbl_tare);
 
     lv_obj_t* btn_clear = lv_btn_create(row1);
-    lv_obj_set_size(btn_clear, LV_PCT(40), 60);
+    lv_obj_set_size(btn_clear, LV_PCT(40), 70);
     lv_obj_set_style_bg_color(btn_clear, lv_color_hex(0xDC2626), 0);
     lv_obj_add_event_cb(btn_clear, btn_clear_accu_event_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t* lbl_clear = lv_label_create(btn_clear);
@@ -176,14 +184,14 @@ void UIManager::buildSettingsView(lv_obj_t* parent) {
 
     // Action Row 2: Target Adjustment
     lv_obj_t* row2 = lv_obj_create(parent);
-    lv_obj_set_size(row2, 600, 80);
+    lv_obj_set_size(row2, 600, 100);
     lv_obj_set_style_border_width(row2, 0, 0);
-    lv_obj_set_style_bg_color(row2, lv_color_hex(0x020617), 0);
+    lv_obj_set_style_bg_color(row2, lv_color_hex(0x0F172A), 0);
     lv_obj_set_flex_flow(row2, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(row2, LV_FLEX_ALIGN_SPACE_AROUND, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
     lv_obj_t* btn_sub = lv_btn_create(row2);
-    lv_obj_set_size(btn_sub, LV_PCT(40), 60);
+    lv_obj_set_size(btn_sub, LV_PCT(40), 70);
     lv_obj_set_style_bg_color(btn_sub, lv_color_hex(0x10B981), 0);
     lv_obj_add_event_cb(btn_sub, btn_target_minus_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t* lbl_sub = lv_label_create(btn_sub);
@@ -192,30 +200,13 @@ void UIManager::buildSettingsView(lv_obj_t* parent) {
     lv_obj_center(lbl_sub);
 
     lv_obj_t* btn_plus = lv_btn_create(row2);
-    lv_obj_set_size(btn_plus, LV_PCT(40), 60);
+    lv_obj_set_size(btn_plus, LV_PCT(40), 70);
     lv_obj_set_style_bg_color(btn_plus, lv_color_hex(0x10B981), 0);
     lv_obj_add_event_cb(btn_plus, btn_target_plus_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t* lbl_plus = lv_label_create(btn_plus);
     lv_obj_set_style_text_font(lbl_plus, &lv_font_montserrat_16, 0);
     lv_label_set_text(lbl_plus, "Target +10g");
     lv_obj_center(lbl_plus);
-
-    // Action Row 3: Diagnostics
-    lv_obj_t* row3 = lv_obj_create(parent);
-    lv_obj_set_size(row3, 600, 80);
-    lv_obj_set_style_border_width(row3, 0, 0);
-    lv_obj_set_style_bg_color(row3, lv_color_hex(0x020617), 0);
-    lv_obj_set_flex_flow(row3, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(row3, LV_FLEX_ALIGN_SPACE_AROUND, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-
-    lv_obj_t* btn_scan = lv_btn_create(row3);
-    lv_obj_set_size(btn_scan, LV_PCT(80), 60);
-    lv_obj_set_style_bg_color(btn_scan, lv_color_hex(0x8B5CF6), 0);
-    lv_obj_add_event_cb(btn_scan, btn_scan_event_cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_t* lbl_scan = lv_label_create(btn_scan);
-    lv_obj_set_style_text_font(lbl_scan, &ui_font_chs_16, 0);
-    lv_label_set_text(lbl_scan, "扫描节点");
-    lv_obj_center(lbl_scan);
 }
 
 static void scan_table_draw_event_cb(lv_event_t * e) {
@@ -478,4 +469,108 @@ void UIManager::updateDashboard(const SystemContext* ctx) {
             lv_obj_set_style_text_color(node_weight_labels[i], lv_color_hex(0x7F1D1D), 0); 
         }
     }
+
+    // --- Admin/Maintenance Sync ---
+    if (admin_tab) {
+        if (ctx->state.isDiagPulseActive) {
+            char buf[64];
+            snprintf(buf, sizeof(buf), "发送测试: 0x%02X (1Hz)", ctx->state.diagLastSent);
+            lv_label_set_text(diag_tx_label, buf);
+            lv_label_set_text(diag_rx_label, ctx->state.diagRxHex);
+        } else {
+            if (diag_tx_label) lv_label_set_text(diag_tx_label, "发送测试: 已停止");
+        }
+        
+        if (diag_switch && lv_obj_has_state(diag_switch, LV_STATE_CHECKED) != ctx->state.isDiagPulseActive) {
+            if (ctx->state.isDiagPulseActive) lv_obj_add_state(diag_switch, LV_STATE_CHECKED);
+            else lv_obj_clear_state(diag_switch, LV_STATE_CHECKED);
+        }
+    }
+}
+
+static void diag_switch_event_cb(lv_event_t * e) {
+    lv_obj_t * obj = lv_event_get_target(e);
+    bool active = lv_obj_has_state(obj, LV_STATE_CHECKED);
+    extern void cmdToggleDiagnosis(bool active);
+    cmdToggleDiagnosis(active);
+}
+
+void UIManager::buildAdminView(lv_obj_t* parent) {
+    lv_obj_set_flex_flow(parent, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(parent, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START);
+
+    lv_obj_t* title = lv_label_create(parent);
+    lv_obj_set_style_text_font(title, &ui_font_chs_16, 0);
+    lv_obj_set_style_text_color(title, lv_color_white(), 0); // High Contrast Label
+    lv_label_set_text(title, "系统维护与诊断 (管理员专享)");
+    lv_obj_set_style_pad_bottom(title, 10, 0);
+
+    // Section 1: Node Scanner
+    lv_obj_t* scan_panel = lv_obj_create(parent);
+    lv_obj_set_size(scan_panel, 700, 90);
+    lv_obj_set_style_bg_color(scan_panel, lv_color_hex(0x1E293B), 0); // Lighter Box
+    lv_obj_set_style_border_color(scan_panel, lv_color_hex(0x334155), 0);
+    lv_obj_set_style_border_width(scan_panel, 1, 0);
+    lv_obj_set_style_radius(scan_panel, 8, 0);
+    lv_obj_set_flex_flow(scan_panel, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(scan_panel, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    lv_obj_t* lbl_scan_desc = lv_label_create(scan_panel);
+    lv_obj_set_style_text_font(lbl_scan_desc, &ui_font_chs_16, 0);
+    lv_obj_set_style_text_color(lbl_scan_desc, lv_color_white(), 0); // Primary Text
+    lv_label_set_text(lbl_scan_desc, "总线在线节点探测与白名单同步");
+
+    lv_obj_t* btn_scan = lv_btn_create(scan_panel);
+    lv_obj_set_size(btn_scan, 140, 50);
+    lv_obj_set_style_bg_color(btn_scan, lv_color_hex(0x8B5CF6), 0);
+    lv_obj_add_event_cb(btn_scan, btn_scan_event_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t* lbl_scan_btn = lv_label_create(btn_scan);
+    lv_obj_set_style_text_font(lbl_scan_btn, &ui_font_chs_16, 0);
+    lv_label_set_text(lbl_scan_btn, "开始扫描");
+    lv_obj_center(lbl_scan_btn);
+
+    // Section 2: 485 Diagnosis Switch Row
+    lv_obj_t* row_mode = lv_obj_create(parent);
+    lv_obj_set_size(row_mode, 700, 80);
+    lv_obj_set_style_bg_color(row_mode, lv_color_hex(0x1E293B), 0); // Lighter Box
+    lv_obj_set_style_border_color(row_mode, lv_color_hex(0x334155), 0);
+    lv_obj_set_style_border_width(row_mode, 1, 0);
+    lv_obj_set_style_radius(row_mode, 8, 0);
+    lv_obj_set_flex_flow(row_mode, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(row_mode, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    lv_obj_t* lbl_mode = lv_label_create(row_mode);
+    lv_obj_set_style_text_font(lbl_mode, &ui_font_chs_16, 0);
+    lv_obj_set_style_text_color(lbl_mode, lv_color_white(), 0); // Primary Text
+    lv_label_set_text(lbl_mode, "485 链路物理层原始字节测试 (1Hz)");
+    
+    diag_switch = lv_switch_create(row_mode);
+    lv_obj_add_event_cb(diag_switch, diag_switch_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+
+    // Section 3: Diagnosis Info Info Display Area
+    lv_obj_t* info_panel = lv_obj_create(parent);
+    lv_obj_set_size(info_panel, 700, 180);
+    lv_obj_set_style_bg_color(info_panel, lv_color_hex(0x0F172A), 0);
+    lv_obj_set_style_border_color(info_panel, lv_color_hex(0x334155), 0);
+    lv_obj_set_style_border_width(info_panel, 1, 0);
+    lv_obj_set_style_pad_all(info_panel, 15, 0);
+
+    diag_tx_label = lv_label_create(info_panel);
+    lv_obj_set_style_text_font(diag_tx_label, &ui_font_chs_16, 0);
+    lv_obj_set_style_text_color(diag_tx_label, lv_color_hex(0x38BDF8), 0);
+    lv_label_set_text(diag_tx_label, "发送测试: 等待中...");
+    lv_obj_align(diag_tx_label, LV_ALIGN_TOP_LEFT, 0, 0);
+
+    lv_obj_t* rx_title = lv_label_create(info_panel);
+    lv_obj_set_style_text_font(rx_title, &ui_font_chs_16, 0);
+    lv_obj_set_style_text_color(rx_title, lv_color_hex(0xD1D5DB), 0); // Bright Gray
+    lv_label_set_text(rx_title, "总线实时接收 (HEX):");
+    lv_obj_align(rx_title, LV_ALIGN_TOP_LEFT, 0, 35);
+
+    diag_rx_label = lv_label_create(info_panel);
+    lv_obj_set_width(diag_rx_label, 670);
+    lv_obj_set_style_text_font(diag_rx_label, &lv_font_montserrat_26, 0); 
+    lv_obj_set_style_text_color(diag_rx_label, lv_color_hex(0x22C55E), 0);
+    lv_label_set_text(diag_rx_label, "---");
+    lv_obj_align(diag_rx_label, LV_ALIGN_TOP_LEFT, 0, 75);
 }

@@ -21,31 +21,27 @@ public:
     void deleteScanModal();
 
 private:
+    void buildUserSettingsView(lv_obj_t* parent);
     void buildDashboardView(lv_obj_t* parent);
-    void buildSettingsView(lv_obj_t* parent);
-
-    lv_obj_t *tabview;
-    lv_obj_t *dashboard_tab;
-    lv_obj_t *settings_tab;
-
-    // --- Dashboard ---
-    lv_obj_t *status_label;
-    lv_obj_t *accu_weight_label;
-    lv_obj_t *target_label;
-    lv_obj_t *huge_combo_label;
-
-    // Bar Graph
-    lv_obj_t* node_bars[NUM_SLAVES];
-    lv_obj_t* node_weight_labels[NUM_SLAVES];
-
-    // --- Settings ---
-    lv_obj_t* spinbox_min;
-    lv_obj_t* spinbox_max;
-
-    // --- Scan Modal ---
     void buildScanModal();
     void updateScanModal(const SystemContext* ctx);
+    
+    // --- Tabs ---
+    lv_obj_t* tabview = nullptr;
+    lv_obj_t* dashboard_tab = nullptr;
+    lv_obj_t* user_tab = nullptr;
+    lv_obj_t* admin_tab = nullptr;
 
+    // --- Components ---
+    lv_obj_t* status_label = nullptr;
+    lv_obj_t* accu_weight_label = nullptr;
+    lv_obj_t* target_label = nullptr;
+    lv_obj_t* huge_combo_label = nullptr;
+    lv_obj_t* spinbox_min = nullptr;
+    lv_obj_t* spinbox_max = nullptr;
+    lv_obj_t* node_bars[20];
+    lv_obj_t* node_weight_labels[20];
+    
     lv_obj_t* scan_modal = nullptr;
     lv_obj_t* scan_bar = nullptr;
     lv_obj_t* scan_title_label = nullptr;
@@ -53,6 +49,12 @@ private:
     lv_obj_t* scan_table = nullptr;
     lv_obj_t* scan_confirm_btn = nullptr;
     uint32_t scan_finish_timer = 0;
+
+    // --- Admin / Maintenance Section ---
+    void buildAdminView(lv_obj_t* parent);
+    lv_obj_t *diag_tx_label = nullptr;
+    lv_obj_t *diag_rx_label = nullptr;
+    lv_obj_t *diag_switch = nullptr;
 };
 
 // UI Commands linking to main scope logic

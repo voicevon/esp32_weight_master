@@ -341,6 +341,10 @@ void ModbusMaster::sendRawByte(uint8_t byte) {
     Serial1.write(byte);
 }
 
+void ModbusMaster::clearRawBuffer() {
+    while(Serial1.available()) Serial1.read();
+}
+
 int ModbusMaster::availableRaw() {
     return Serial1.available();
 }

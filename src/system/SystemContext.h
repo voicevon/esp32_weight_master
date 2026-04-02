@@ -32,6 +32,11 @@ struct RuntimeState {
     int currentScanCycle;     // 当前重试轮次 0-4
     bool onlineNodes[20];     // 实时在线状态 (兼容原有逻辑)
     bool scanResults[5][20];  // 5轮扫描的完整历史记录
+    
+    // --- 485 诊断模式状态 ---
+    bool isDiagPulseActive;   // 是否处于 1Hz 脉冲诊断模式
+    uint8_t diagLastSent;     // 最后一次发送的递增字节
+    char diagRxHex[128];      // 最近接收到的 16 进制字符串显示
 };
 
 /**

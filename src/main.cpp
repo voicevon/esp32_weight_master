@@ -41,9 +41,54 @@ ConveyorController conveyor(&rs485, MOTOR_ID_BELT1, MOTOR_ID_BELT2);
 // --- Task Definitions ---
 void controlTask(void* pvParameters) {
     Serial.println("[TASK] Control Task Started on Core 1");
+    static unsigned long lastDiagPulseTime = 0;
     static unsigned long lastCalcTime = 0;
     
     while (true) {
+        // --- 485 诊断模式处理 (优先级最高，且与标准业务互斥) ---
+        bool isDiagActive = false;
+        xSemaphoreTake(mutexStatus, portMAX_DELAY);
+        isDiagActive = globalCtx.state.isDiagPulseActive;
+        xSemaphoreGive(mutexStatus);
+
+        if (isDiagActive) {
+            // 1. 定时发送递增脉冲 (1Hz)
+            if (millis() - lastDiagPulseTime >= 1000) {
+                lastDiagPulseTime = millis();
+                
+                xSemaphoreTake(mutexStatus, portMAX_DELAY);
+                globalCtx.state.diagLastSent++;
+                uint8_t toSend = globalCtx.state.diagLastSent;
+                xSemaphoreGive(mutexStatus);
+                
+                rs485.sendRawByte(toSend);
+            }
+
+            // 2. 实时读取并格式化接收数据 (HEX 格式)
+            if (rs485.availableRaw() > 0) {
+                xSemaphoreTake(mutexStatus, portMAX_DELAY);
+                
+                // 简单的循环缓冲区逻辑：保持显示最近的数据
+                while (rs485.availableRaw() > 0) {
+                    uint8_t b = rs485.readRawByte();
+                    char hexBuf[8];
+                    snprintf(hexBuf, sizeof(hexBuf), "%02X ", b);
+                    
+                    // 如果缓冲区快满了，先清空一部分或全部 (此处简单处理：满则清空)
+                    if (strlen(globalCtx.state.diagRxHex) > 100) {
+                        memset(globalCtx.state.diagRxHex, 0, sizeof(globalCtx.state.diagRxHex));
+                    }
+                    strncat(globalCtx.state.diagRxHex, hexBuf, sizeof(globalCtx.state.diagRxHex) - strlen(globalCtx.state.diagRxHex) - 1);
+                }
+                
+                xSemaphoreGive(mutexStatus);
+            }
+
+            vTaskDelay(pdMS_TO_TICKS(10)); // 诊断模式下的轻量等待
+            continue; // 跳过下方正常业务逻辑
+        }
+
+        // --- 正常生产逻辑 ---
         // 核心心跳：推动 ModbusMaster 轮询过程
         rs485.update();
         
@@ -214,6 +259,24 @@ void cmdStartScan() {
 
 void cmdGenerateWhitelist() {
     rs485.generateWhitelistFromScan();
+}
+
+void cmdToggleDiagnosis(bool active) {
+    xSemaphoreTake(mutexStatus, portMAX_DELAY);
+    globalCtx.state.isDiagPulseActive = active;
+    if (active) {
+        // 开启诊断时，清空旧数据
+        globalCtx.state.diagLastSent = 0;
+        memset(globalCtx.state.diagRxHex, 0, sizeof(globalCtx.state.diagRxHex));
+        rs485.clearRawBuffer();
+    }
+    xSemaphoreGive(mutexStatus);
+    
+    if (active) {
+        Serial.println("[CMD] 485 Diagnosis Mode ACTIVATED.");
+    } else {
+        Serial.println("[CMD] 485 Diagnosis Mode DEACTIVATED.");
+    }
 }
 
 void cmdClearAccumulated() {
