@@ -22,12 +22,12 @@ public:
     ModbusMaster(int rxPin, int txPin, int enPin, long baud);
     void begin();
     
-    // 异步控制核心
-    void update(); 
+    // 异步控制核心 (传入当前全系统运行模式以决策资源策略)
+    void update(OperationMode curMode); 
     TransactionStatus getStatus() const { return _status; }
     void startScan(); // 启动全量扫描
     void stopScan();  // 中止全量扫描
-    bool isScanning() const { return _isScanning; }
+    OperationMode getMode() const { return _currentMode; }
     int getScanProgress() const { return _scanProgress; }
     int getCurrentScanCycle() const { return _scanCycle; }
     const bool (*getScanHistory())[21] { return _scanHistory; } // 返回 5x21 历史记录数组
@@ -99,11 +99,7 @@ private:
     Modbus::ResultCode _nodeLastResult[21]; // Latest error code per node
     int _unstableCount = 0; // 新增：正在抖动的节点数量
 
-    bool _isScanning = false;
-    int _scanProgress = 0;
-    int _scanCycle = 0;       // 当前重试轮次 0-4
-    bool _scanHistory[5][21]; // 记录 5 轮扫描中每一轮的在线状态
-
+    void handlePollingCycle(OperationMode curMode);
     bool waitTransaction(uint8_t id);
     static ModbusMaster* _instance;
     static bool cbPoll(Modbus::ResultCode event, uint16_t transactionId, void* data);
@@ -111,6 +107,11 @@ private:
     
     // 内部事务执行器
     bool execCmd(uint8_t id, std::function<bool()> startFunc);
+
+    OperationMode _currentMode = MODE_IDLE; // 当前通讯执行模式
+    int _scanProgress = 0;
+    int _scanCycle = 0;       // 当前重试轮次 0-4
+    bool _scanHistory[5][21]; // 记录 5 轮扫描中每一轮的在线状态
 
     SemaphoreHandle_t _mutexBus; // 保护底层 Modbus 对象和状态机
 };

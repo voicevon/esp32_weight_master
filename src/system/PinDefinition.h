@@ -10,7 +10,7 @@
 // 根据 esp32_s3_lcd 的通信验证基础，RX:15，TX:16
 #define PIN_RS485_RX     15
 #define PIN_RS485_TX     16
-#define PIN_RS485_TX_EN  -1    // S3的485模块自带自动收发切换？暂时置-1，需结合硬件确认
+#define PIN_RS485_TX_EN  -1    // 硬件自动收发切换，无需使能引脚
 #define RS485_TX_ENABLE  HIGH 
 #define RS485_RX_ENABLE  LOW  
 #define RS485_BAUD       9600

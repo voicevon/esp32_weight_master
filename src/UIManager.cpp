@@ -23,11 +23,27 @@ UIManager::UIManager() {
     diag_switch = nullptr;
 }
 
+static void tab_change_event_cb(lv_event_t * e) {
+    lv_obj_t * tv = lv_event_get_target(e);
+    uint16_t tab_id = lv_tabview_get_tab_act(tv);
+    
+    extern void updateOperationMode(OperationMode mode);
+    
+    if (tab_id == 0) {
+        updateOperationMode(MODE_PRODUCTION);
+    } else {
+        // 进入第 2, 3 页即视为进入“菜单/配置模式”，暂停自动业务通讯
+        updateOperationMode(MODE_CONFIGURATION);
+    }
+}
+
 void UIManager::init() {
     lv_obj_set_style_bg_color(lv_scr_act(), lv_color_hex(0x0F172A), 0); // Deep Slate Background
 
     // Tabview
     tabview = lv_tabview_create(lv_scr_act(), LV_DIR_TOP, 0);
+    lv_obj_add_event_cb(tabview, tab_change_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+    
     lv_obj_set_style_bg_color(tabview, lv_color_hex(0x0F172A), 0);
     lv_obj_t* tab_btns = lv_tabview_get_tab_btns(tabview);
     lv_obj_set_style_bg_color(tab_btns, lv_color_hex(0x1E293B), 0); // Lighter slate for header
@@ -341,7 +357,7 @@ void UIManager::deleteScanModal() {
 }
 
 void UIManager::updateScanModal(const SystemContext* ctx) {
-    if (ctx->state.isScanning) {
+    if (ctx->state.curMode == MODE_DIAG_SCAN) {
         if (!scan_modal) {
             buildScanModal();
         }
@@ -402,7 +418,7 @@ void UIManager::updateDashboard(const SystemContext* ctx) {
     char buf[64];
     
     // Status indicator with scanning overwrite
-    if (ctx->state.isScanning) {
+    if (ctx->state.curMode == MODE_DIAG_SCAN) {
         lv_label_set_text(status_label, "正在诊断与生成白名单..."); 
         lv_obj_set_style_text_color(status_label, lv_color_hex(0x8B5CF6), 0);
     } else {
@@ -472,7 +488,8 @@ void UIManager::updateDashboard(const SystemContext* ctx) {
 
     // --- Admin/Maintenance Sync ---
     if (admin_tab) {
-        if (ctx->state.isDiagPulseActive) {
+        bool isPulse = (ctx->state.curMode == MODE_DIAG_PULSE);
+        if (isPulse) {
             char buf[64];
             snprintf(buf, sizeof(buf), "发送测试: 0x%02X (1Hz)", ctx->state.diagLastSent);
             lv_label_set_text(diag_tx_label, buf);
@@ -481,8 +498,8 @@ void UIManager::updateDashboard(const SystemContext* ctx) {
             if (diag_tx_label) lv_label_set_text(diag_tx_label, "发送测试: 已停止");
         }
         
-        if (diag_switch && lv_obj_has_state(diag_switch, LV_STATE_CHECKED) != ctx->state.isDiagPulseActive) {
-            if (ctx->state.isDiagPulseActive) lv_obj_add_state(diag_switch, LV_STATE_CHECKED);
+        if (diag_switch && lv_obj_has_state(diag_switch, LV_STATE_CHECKED) != isPulse) {
+            if (isPulse) lv_obj_add_state(diag_switch, LV_STATE_CHECKED);
             else lv_obj_clear_state(diag_switch, LV_STATE_CHECKED);
         }
     }

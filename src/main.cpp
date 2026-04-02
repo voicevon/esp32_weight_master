@@ -39,165 +39,155 @@ CombinationEngine engine(290.0f, 310.0f);
 ConveyorController conveyor(&rs485, MOTOR_ID_BELT1, MOTOR_ID_BELT2);
 
 // --- Task Definitions ---
+// --- 全局管理：统一切换运行模式 ---
+void updateOperationMode(OperationMode newMode) {
+    if (globalCtx.state.curMode == newMode) return;
+    
+    Serial.printf("[SYSTEM] Mode Changing: %d -> %d\n", globalCtx.state.curMode, newMode);
+    
+    // 退出旧模式的清理
+    if (globalCtx.state.curMode == MODE_DIAG_SCAN || globalCtx.state.curMode == MODE_DIAG_PULSE) {
+        rs485.clearRawBuffer();
+    }
+    
+    // 进入新模式的初始化
+    if (newMode == MODE_DIAG_SCAN) {
+        rs485.startScan();
+    }
+    
+    xSemaphoreTake(mutexStatus, portMAX_DELAY);
+    globalCtx.state.curMode = newMode;
+    xSemaphoreGive(mutexStatus);
+}
+
 void controlTask(void* pvParameters) {
     Serial.println("[TASK] Control Task Started on Core 1");
     static unsigned long lastDiagPulseTime = 0;
     static unsigned long lastCalcTime = 0;
     
     while (true) {
-        // --- 485 诊断模式处理 (优先级最高，且与标准业务互斥) ---
-        bool isDiagActive = false;
+        OperationMode mode;
         xSemaphoreTake(mutexStatus, portMAX_DELAY);
-        isDiagActive = globalCtx.state.isDiagPulseActive;
+        mode = globalCtx.state.curMode;
         xSemaphoreGive(mutexStatus);
 
-        if (isDiagActive) {
-            // 1. 定时发送递增脉冲 (1Hz)
+        // 1. 链路诊断模式 (1Hz 原始字节测试)
+        if (mode == MODE_DIAG_PULSE) {
             if (millis() - lastDiagPulseTime >= 1000) {
                 lastDiagPulseTime = millis();
-                
                 xSemaphoreTake(mutexStatus, portMAX_DELAY);
                 globalCtx.state.diagLastSent++;
                 uint8_t toSend = globalCtx.state.diagLastSent;
                 xSemaphoreGive(mutexStatus);
-                
                 rs485.sendRawByte(toSend);
             }
 
-            // 2. 实时读取并格式化接收数据 (HEX 格式)
             if (rs485.availableRaw() > 0) {
                 xSemaphoreTake(mutexStatus, portMAX_DELAY);
-                
-                // 简单的循环缓冲区逻辑：保持显示最近的数据
                 while (rs485.availableRaw() > 0) {
                     uint8_t b = rs485.readRawByte();
                     char hexBuf[8];
                     snprintf(hexBuf, sizeof(hexBuf), "%02X ", b);
-                    
-                    // 如果缓冲区快满了，先清空一部分或全部 (此处简单处理：满则清空)
                     if (strlen(globalCtx.state.diagRxHex) > 100) {
                         memset(globalCtx.state.diagRxHex, 0, sizeof(globalCtx.state.diagRxHex));
                     }
                     strncat(globalCtx.state.diagRxHex, hexBuf, sizeof(globalCtx.state.diagRxHex) - strlen(globalCtx.state.diagRxHex) - 1);
                 }
-                
                 xSemaphoreGive(mutexStatus);
             }
-
-            vTaskDelay(pdMS_TO_TICKS(10)); // 诊断模式下的轻量等待
-            continue; // 跳过下方正常业务逻辑
+            vTaskDelay(pdMS_TO_TICKS(10));
+            continue;
         }
 
-        // --- 正常生产逻辑 ---
-        // 核心心跳：推动 ModbusMaster 轮询过程
-        rs485.update();
+        // 2. Modbus 相关模式 (生产或扫描)
+        rs485.update(mode);
         
-        // 更新本地重量缓存
-        xSemaphoreTake(mutexWeights, portMAX_DELAY);
-        for (int i = 0; i < NUM_SLAVES; i++) {
-            slaveWeights[i] = rs485.getWeight(i + 1);
-            slaveStable[i] = rs485.isStable(i + 1);
-        }
-        xSemaphoreGive(mutexWeights);
+        if (mode == MODE_PRODUCTION) {
+            // 更新本地重量缓存
+            xSemaphoreTake(mutexWeights, portMAX_DELAY);
+            for (int i = 0; i < NUM_SLAVES; i++) {
+                slaveWeights[i] = rs485.getWeight(i + 1);
+                slaveStable[i] = rs485.isStable(i + 1);
+            }
+            xSemaphoreGive(mutexWeights);
 
-        // 生产逻辑处理
-        bool canCalculate = false;
-        float currentMin, currentMax;
+            // 生产逻辑处理
+            bool canCalculate = false;
+            float currentMin, currentMax;
 
-        xSemaphoreTake(mutexParams, portMAX_DELAY);
-        canCalculate = isProductionActive;
-        currentMin = globalCtx.config.targetMin;
-        currentMax = globalCtx.config.targetMax;
-        xSemaphoreGive(mutexParams);
+            xSemaphoreTake(mutexParams, portMAX_DELAY);
+            canCalculate = isProductionActive;
+            currentMin = globalCtx.config.targetMin;
+            currentMax = globalCtx.config.targetMax;
+            xSemaphoreGive(mutexParams);
 
-        xSemaphoreTake(mutexStatus, portMAX_DELAY);
-        SystemStatus currentStatus = systemStatus;
-        xSemaphoreGive(mutexStatus);
+            SystemStatus currentStatus;
+            xSemaphoreTake(mutexStatus, portMAX_DELAY);
+            currentStatus = systemStatus;
+            xSemaphoreGive(mutexStatus);
 
-        if (canCalculate && currentStatus == SYS_READY) {
-            if (millis() - lastCalcTime > CALC_ENGINE_INTERVAL_MS) { 
-                lastCalcTime = millis();
-                
-                engine.setTargetRange(currentMin, currentMax);
-                
-                // --- 动态映射方案：仅将活跃稳定的节点送入引擎 ---
-                std::vector<float> activeWeights;
-                std::vector<int> activeIds;
-                
-                for (int i = 0; i < NUM_SLAVES; i++) {
-                    int id = i + 1;
-                    if (slaveStable[i] && rs485.getNodeStatus(id) == NODE_STABLE && rs485.isWhitelisted(id)) {
-                        activeWeights.push_back(slaveWeights[i]);
-                        activeIds.push_back(id);
-                    }
-                }
-                
-                int availableCnt = activeWeights.size();
-                CombinationResult res = {false, 0.0f, {}};
-
-                if (availableCnt > 0) {
-                    res = engine.findBestCombination(activeWeights);
-                }
-                
-                if (res.success) {
-                    xSemaphoreTake(mutexStatus, portMAX_DELAY);
-                    systemStatus = SYS_DISCHARGING;
-                    lastCombinedWeight = res.totalWeight;
-                    currentSelectedMask = 0;
+            if (canCalculate && currentStatus == SYS_READY) {
+                if (millis() - lastCalcTime > CALC_ENGINE_INTERVAL_MS) { 
+                    lastCalcTime = millis();
+                    engine.setTargetRange(currentMin, currentMax);
                     
-                    std::vector<int> mappedIds;
-                    for (int idx_in_active : res.selectedIndices) {
-                        int physicalId = activeIds[idx_in_active - 1];
-                        mappedIds.push_back(physicalId);
-                        currentSelectedMask |= (1 << (physicalId - 1));
-                        rs485.setNodeStatus(physicalId, NODE_LOCKED);
-                    }
-                    xSemaphoreGive(mutexStatus);
-
-                    Serial.printf("[AUTO] Combination Found: %.1f g, Mask: 0x%08X (Avail: %d)\n", 
-                                  res.totalWeight, currentSelectedMask, availableCnt);
-                    
-                    for (int id : mappedIds) {
-                        rs485.openDischarge1S(id); 
+                    std::vector<float> activeWeights;
+                    std::vector<int> activeIds;
+                    for (int i = 0; i < NUM_SLAVES; i++) {
+                        int id = i + 1;
+                        if (slaveStable[i] && rs485.getNodeStatus(id) == NODE_STABLE && rs485.isWhitelisted(id)) {
+                            activeWeights.push_back(slaveWeights[i]);
+                            activeIds.push_back(id);
+                        }
                     }
                     
-                    vTaskDelay(pdMS_TO_TICKS(DISCHARGE_SETTLE_MS));
-
-                    for (int id : mappedIds) {
-                        rs485.setNodeStatus(id, NODE_DIRTY);
+                    int availableCnt = activeWeights.size();
+                    CombinationResult res = {false, 0.0f, {}};
+                    if (availableCnt > 0) {
+                        res = engine.findBestCombination(activeWeights);
                     }
+                    
+                    if (res.success) {
+                        xSemaphoreTake(mutexStatus, portMAX_DELAY);
+                        systemStatus = SYS_DISCHARGING;
+                        lastCombinedWeight = res.totalWeight;
+                        currentSelectedMask = 0;
+                        std::vector<int> mappedIds;
+                        for (int idx_in_active : res.selectedIndices) {
+                            int physicalId = activeIds[idx_in_active - 1];
+                            mappedIds.push_back(physicalId);
+                            currentSelectedMask |= (1 << (physicalId - 1));
+                            rs485.setNodeStatus(physicalId, NODE_LOCKED);
+                        }
+                        xSemaphoreGive(mutexStatus);
 
-                    xSemaphoreTake(mutexParams, portMAX_DELAY);
-                    accumulatedTotalWeight += res.totalWeight;
-                    globalCtx.config.accumulatedWeight = accumulatedTotalWeight;
-                    xSemaphoreGive(mutexParams);
+                        Serial.printf("[AUTO] Combination Found: %.1f g, Mask: 0x%08X\n", res.totalWeight, currentSelectedMask);
+                        for (int id : mappedIds) rs485.openDischarge1S(id); 
+                        vTaskDelay(pdMS_TO_TICKS(DISCHARGE_SETTLE_MS));
 
-                    xSemaphoreTake(mutexStatus, portMAX_DELAY);
-                    currentSelectedMask = 0;
-                    xSemaphoreGive(mutexStatus);
+                        for (int id : mappedIds) rs485.setNodeStatus(id, NODE_DIRTY);
 
-                    // 级联传输
-                    xSemaphoreTake(mutexStatus, portMAX_DELAY);
-                    systemStatus = SYS_TRANSFER_B1;
-                    xSemaphoreGive(mutexStatus);
-                    conveyor.collectFromUnits();
-                    vTaskDelay(pdMS_TO_TICKS(BELT_COLLECT_PERIOD_MS));
+                        xSemaphoreTake(mutexParams, portMAX_DELAY);
+                        accumulatedTotalWeight += res.totalWeight;
+                        globalCtx.config.accumulatedWeight = accumulatedTotalWeight;
+                        xSemaphoreGive(mutexParams);
 
-                    xSemaphoreTake(mutexStatus, portMAX_DELAY);
-                    systemStatus = SYS_STEPPING_B2;
-                    xSemaphoreGive(mutexStatus);
-                    conveyor.advanceOutput();
-                    vTaskDelay(pdMS_TO_TICKS(BELT_STEP_PERIOD_MS));
+                        xSemaphoreTake(mutexStatus, portMAX_DELAY);
+                        systemStatus = SYS_TRANSFER_B1;
+                        currentSelectedMask = 0;
+                        xSemaphoreGive(mutexStatus);
+                        conveyor.collectFromUnits();
+                        vTaskDelay(pdMS_TO_TICKS(BELT_COLLECT_PERIOD_MS));
 
-                    xSemaphoreTake(mutexStatus, portMAX_DELAY);
-                    systemStatus = SYS_READY;
-                    xSemaphoreGive(mutexStatus);
-                } else {
-                    static uint32_t lastEngineLog = 0;
-                    if (millis() - lastEngineLog > 2000) {
-                        Serial.printf("[ENGINE] Standby... Avail Nodes: %d, Target: [%.1f-%.1f]\n", 
-                                      availableCnt, currentMin, currentMax);
-                        lastEngineLog = millis();
+                        xSemaphoreTake(mutexStatus, portMAX_DELAY);
+                        systemStatus = SYS_STEPPING_B2;
+                        xSemaphoreGive(mutexStatus);
+                        conveyor.advanceOutput();
+                        vTaskDelay(pdMS_TO_TICKS(BELT_STEP_PERIOD_MS));
+
+                        xSemaphoreTake(mutexStatus, portMAX_DELAY);
+                        systemStatus = SYS_READY;
+                        xSemaphoreGive(mutexStatus);
                     }
                 }
             }
@@ -210,7 +200,7 @@ void controlTask(void* pvParameters) {
 void uiTask(void* pvParameters) {
     Serial.println("[TASK] UI/LVGL Task Started on Core 0");
     while (true) {
-        // 1. 同步数据字典到全局 UI Context
+        // 同步数据到 UI Context
         xSemaphoreTake(mutexWeights, portMAX_DELAY);
         for(int i=0; i<NUM_SLAVES; i++) {
             globalCtx.state.currentWeights[i] = slaveWeights[i];
@@ -219,10 +209,11 @@ void uiTask(void* pvParameters) {
         xSemaphoreGive(mutexWeights);
 
         xSemaphoreTake(mutexStatus, portMAX_DELAY);
-        globalCtx.state.status = systemStatus;
         globalCtx.state.lastBatchWeight = lastCombinedWeight;
         globalCtx.state.selectionMask = currentSelectedMask;
-        globalCtx.state.isScanning = rs485.isScanning();
+        globalCtx.state.status = systemStatus; // 同步内部业务状态
+        
+        // 扫描进度同步 (rs485.update 会更新这些底层数据)
         globalCtx.state.scanProgress = rs485.getScanProgress();
         globalCtx.state.currentScanCycle = rs485.getCurrentScanCycle();
         
@@ -240,11 +231,8 @@ void uiTask(void* pvParameters) {
         xSemaphoreGive(mutexStatus);
 
         ui.updateDashboard(&globalCtx);
-
-        // 2. LVGL 必须定时唤醒
         lv_tick_inc(33);
         lv_timer_handler();
-
         vTaskDelay(pdMS_TO_TICKS(33));
     }
 }
@@ -254,29 +242,12 @@ void cmdGlobalTare() {
 }
 
 void cmdStartScan() {
-    rs485.startScan();
-}
-
-void cmdGenerateWhitelist() {
-    rs485.generateWhitelistFromScan();
+    updateOperationMode(MODE_DIAG_SCAN);
 }
 
 void cmdToggleDiagnosis(bool active) {
-    xSemaphoreTake(mutexStatus, portMAX_DELAY);
-    globalCtx.state.isDiagPulseActive = active;
-    if (active) {
-        // 开启诊断时，清空旧数据
-        globalCtx.state.diagLastSent = 0;
-        memset(globalCtx.state.diagRxHex, 0, sizeof(globalCtx.state.diagRxHex));
-        rs485.clearRawBuffer();
-    }
-    xSemaphoreGive(mutexStatus);
-    
-    if (active) {
-        Serial.println("[CMD] 485 Diagnosis Mode ACTIVATED.");
-    } else {
-        Serial.println("[CMD] 485 Diagnosis Mode DEACTIVATED.");
-    }
+    if (active) updateOperationMode(MODE_DIAG_PULSE);
+    else updateOperationMode(MODE_PRODUCTION);
 }
 
 void cmdClearAccumulated() {
@@ -353,6 +324,10 @@ void setup() {
     );
 
     Serial.println("[SYSTEM] Dual-Core Mutlitasking Started");
+    
+    // [DIAGNOSTIC] 自动启动全量扫描，以便观察总线状态
+    delay(2000); // 等待任务稳定
+    cmdStartScan();
 }
 
 void loop() {
