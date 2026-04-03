@@ -27,8 +27,17 @@ void ModbusMaster::modbusTask(void* param) {
             // 内部事务超时监控
             if (instance->_status == ST_WAITING) {
                 if (millis() - instance->_lastPollTime > 1000) {
+                    Serial.println("[MB_MASTER] Transaction Timeout Detected");
                     instance->_status = ST_TIMEOUT;
                     instance->_packetsDropped++;
+                    
+                    // --- 超时强制通知业务层 (TID 匹配机制) ---
+                    if (instance->_pendingCb) {
+                        Serial.println("[MB_MASTER] Software Timeout Triggered. Clearing UART Buffer.");
+                        instance->clearRawBuffer(); // 软件超时后清理 UART 缓冲区，防止脏数据干扰后续包
+                        instance->_pendingCb(Modbus::EX_TIMEOUT, instance->_lastTid, instance->_pendingData);
+                        instance->_pendingCb = nullptr;
+                    }
                 }
             }
             xSemaphoreGive(instance->_mutexBus);
@@ -46,15 +55,30 @@ bool ModbusMaster::asyncRead(uint8_t id, uint16_t addr, uint16_t count, cbTransa
         return false;
     }
 
-    _status = ST_WAITING;
+    _status       = ST_WAITING;
     _lastPollTime = millis();
     _packetsSent++;
+
+    _pendingCb   = cb;
+    _pendingData = (void*)destBuffer;
     
-    /**
-     * [重构] 显式使用调用方提供的缓冲区。
-     * 库内部实现中，传入的 destBuffer 会存储结果，并作为回调 data 指针返回。
-     */
-    _mb.readHreg(id, addr, destBuffer, count, cb);
+    // 包装原始回调以自动更新状态 (加入 TID 匹配监测)
+    _lastTid = _mb.readHreg(id, addr, destBuffer, count, [](Modbus::ResultCode event, uint16_t tid, void* d) {
+        if (_instance) {
+            // 只有当 TID 匹配或为 0 (ModbusRTU 库硬编码 RTU 回调 TID 为 0) 时才更新
+            if (tid == _instance->_lastTid || tid == 0) {
+                _instance->_status = (event == Modbus::EX_SUCCESS) ? ST_SUCCESS : ST_ERROR;
+                if (_instance->_pendingCb) {
+                    _instance->_pendingCb(event, tid, d);
+                    _instance->_pendingCb = nullptr;
+                }
+            } else {
+                Serial.printf("[MB_MASTER] Ignored Ghost Response: Expect TID %d, Got %d\n", _instance->_lastTid, tid);
+            }
+        }
+        return true;
+    });
+
     xSemaphoreGive(_mutexBus);
     return true;
 }

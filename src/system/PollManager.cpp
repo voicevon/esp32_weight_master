@@ -32,8 +32,12 @@ void PollManager::setMode(OperationMode mode) {
 }
 
 void PollManager::process() {
-    // 核心解耦点：只有当驱动层真正空闲时，业务调度层才下发任务
-    if (_mb->getStatus() != ModbusMaster::ST_IDLE) return;
+    // 核心解耦点：只有当驱动层真正空闲时，业务调度层才下发任务 (Phase 4 修正：允许所有终态状态)
+    ModbusMaster::TransactionStatus status = _mb->getStatus();
+    if (status != ModbusMaster::ST_IDLE && status != ModbusMaster::ST_SUCCESS && 
+        status != ModbusMaster::ST_TIMEOUT && status != ModbusMaster::ST_ERROR) {
+        return;
+    }
 
     switch (_curMode) {
         case MODE_PRODUCTION:

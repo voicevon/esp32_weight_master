@@ -370,11 +370,12 @@ struct UISnapshot {
 
 ## 七、验收总 Checklist
 
-- [ ] `main.cpp` 行数 ≤ 60 行
-- [ ] `PollManager.cpp` 不含 `extern` 关键字
-- [ ] `UIManager.h` 不含 `extern void cmd` 声明
-- [ ] mutex 数量从 3 减至 2
-- [ ] `slaveWeights[]` 冗余中间层不存在
-- [ ] `CombinationEngine::selectedIndices` 统一为 0-based，调用方无 `-1` hack
+- [x] `main.cpp` 行数 ≤ 60 行
+- [x] `PollManager.cpp` 不含 `extern` 关键字
+- [x] `UIManager.h` 不含 `extern void cmd` 声明
+- [x] mutex 数量从 3 减至 2
+- [x] `slaveWeights[]` 冗余中间层不存在
+- [x] `CombinationEngine::selectedIndices` 统一为 0-based，调用方无 `-1` hack
+- [x] `ConveyorController` 溢出保护已添加 (Phase 5b)
 - [ ] 编译零警告（`-Wall`）
 - [ ] 硬件验证：生产模式、扫描模式、诊断模式三场景功能正常

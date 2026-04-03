@@ -55,6 +55,11 @@ private:
 
     volatile TransactionStatus _status = ST_IDLE;
     unsigned long _lastPollTime = 0;
+    
+    // --- 异步回调处理 (TID 匹配机制) ---
+    cbTransaction     _pendingCb   = nullptr;
+    void*             _pendingData = nullptr;
+    volatile uint16_t _lastTid     = 0;
 
     uint32_t _packetsSent = 0;
     uint32_t _packetsDropped = 0;

@@ -11,13 +11,13 @@ void ConveyorController::begin() {
 void ConveyorController::collectFromUnits() {
     _currentPos1 += 30000;
     // 使用通用同步写入接口 (地址 0x0200 为伺服位置寄存器)
-    _rs485->syncWrite(_id1, 0x0200, (uint16_t)_currentPos1); 
+    _rs485->syncWrite(_id1, 0x0200, (uint16_t)(_currentPos1 % 65536)); 
 }
 
 void ConveyorController::advanceOutput() {
     _currentPos2 += 5000;
     // 使用通用同步写入接口 (地址 0x0200 为伺服位置寄存器)
-    _rs485->syncWrite(_id2, 0x0200, (uint16_t)_currentPos2); 
+    _rs485->syncWrite(_id2, 0x0200, (uint16_t)(_currentPos2 % 65536)); 
 }
 
 bool ConveyorController::isMoving() {

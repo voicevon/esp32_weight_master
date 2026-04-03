@@ -313,6 +313,11 @@ static void scan_table_draw_event_cb(lv_event_t * e) {
             else if(strcmp(txt, "S") == 0) dsc->rect_dsc->bg_color = lv_color_hex(0x38BDF8);
             else                           dsc->rect_dsc->bg_color = lv_color_hex(0x1E293B);
             dsc->label_dsc->color = lv_color_white();
+            
+            // --- 增强颗粒度：为每个单元格添加白色细边框 ---
+            dsc->rect_dsc->border_width = 1;
+            dsc->rect_dsc->border_color = lv_color_white();
+            dsc->rect_dsc->border_side  = LV_BORDER_SIDE_FULL;
         }
     }
 }
@@ -326,7 +331,7 @@ void UIManager::buildScanModal() {
     lv_obj_set_style_border_width(scan_modal, 0, 0);
 
     lv_obj_t* panel = lv_obj_create(scan_modal);
-    lv_obj_set_size(panel, 720, 420);
+    lv_obj_set_size(panel, 720, 380); // 缩小高度 (420 -> 380) 以防屏幕溢出
     lv_obj_center(panel);
     lv_obj_set_style_bg_color(panel, lv_color_hex(0x1E293B), 0);
     lv_obj_set_style_border_color(panel, lv_color_hex(0x38BDF8), 0);
@@ -356,8 +361,8 @@ void UIManager::buildScanModal() {
     lv_obj_align(scan_progress_label, LV_ALIGN_TOP_MID, 0, 60);
 
     scan_table = lv_table_create(panel);
-    lv_obj_set_size(scan_table, 700, 280);
-    lv_obj_align(scan_table, LV_ALIGN_TOP_MID, 0, 115);
+    lv_obj_set_size(scan_table, 700, 220); // 缩小表格高度 (280 -> 220)
+    lv_obj_align(scan_table, LV_ALIGN_TOP_MID, 0, 105);
     lv_table_set_col_cnt(scan_table, 20);
     lv_table_set_row_cnt(scan_table, 5);
     lv_obj_set_style_bg_opa(scan_table, 0, 0);
