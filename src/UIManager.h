@@ -42,8 +42,8 @@ private:
     lv_obj_t* huge_combo_label = nullptr;
     lv_obj_t* spinbox_min = nullptr;
     lv_obj_t* spinbox_max = nullptr;
-    lv_obj_t* node_bars[20];
-    lv_obj_t* node_weight_labels[20];
+    lv_obj_t* node_bars[21];
+    lv_obj_t* node_weight_labels[21];
     
     lv_obj_t* scan_modal = nullptr;
     lv_obj_t* scan_bar = nullptr;

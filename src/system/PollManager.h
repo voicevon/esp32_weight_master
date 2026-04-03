@@ -20,6 +20,7 @@ public:
     // 核心调度接口：在业务循环中非阻塞调用
     void process(); 
     void setMode(OperationMode mode);
+    OperationMode getMode() const { return _curMode; }
     
     // 数据查询接口 (UI/业务逻辑调用)
     float getWeight(int id) const;

@@ -13,7 +13,7 @@ UIManager::UIManager() {
     huge_combo_label = nullptr;
     spinbox_min = nullptr;
     spinbox_max = nullptr;
-    for(int i=0; i<NUM_SLAVES; i++) {
+    for(int i=0; i<NUM_SLAVES + 1; i++) {
         node_bars[i] = nullptr;
         node_weight_labels[i] = nullptr;
     }
@@ -23,12 +23,6 @@ UIManager::UIManager() {
     diag_switch = nullptr;
     _bus = nullptr;
 }
-
-// =============================================================================
-// 事件回调 (全部改为通过接口调用)
-// -----------------------------------------------------------------------------
-// 注意：lv_obj_add_event_cb 必须传入 `this` 作为 user_data
-// =============================================================================
 
 static void tab_change_event_cb(lv_event_t * e) {
     lv_obj_t * tv = lv_event_get_target(e);
@@ -81,15 +75,10 @@ static void scan_confirm_btn_cb(lv_event_t * e) {
     if(ui) ui->deleteScanModal();
 }
 
-// =============================================================================
-// UI 构建逻辑
-// =============================================================================
-
 void UIManager::init() {
     lv_obj_set_style_bg_color(lv_scr_act(), lv_color_hex(0x0F172A), 0);
 
     tabview = lv_tabview_create(lv_scr_act(), LV_DIR_TOP, 0);
-    // 注入 this 以便回调访问 _bus
     lv_obj_add_event_cb(tabview, tab_change_event_cb, LV_EVENT_VALUE_CHANGED, this);
     
     lv_obj_set_style_bg_color(tabview, lv_color_hex(0x0F172A), 0);
@@ -163,8 +152,8 @@ void UIManager::buildDashboardView(lv_obj_t* parent) {
     lv_obj_set_flex_align(graph_container, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_column(graph_container, 2, 0);
 
-    for(int i = 0; i < NUM_SLAVES; i++) {
-        if (i >= 20) break;
+    for(int i = 1; i <= NUM_SLAVES; i++) {
+        if (i > 20) break;
         lv_obj_t* col = lv_obj_create(graph_container);
         lv_obj_set_size(col, 38, 180);
         lv_obj_set_style_bg_opa(col, 0, 0);
@@ -313,10 +302,6 @@ void UIManager::buildAdminView(lv_obj_t* parent) {
     lv_obj_align(diag_rx_label, LV_ALIGN_TOP_LEFT, 0, 75);
 }
 
-// =============================================================================
-// 控制/反馈逻辑
-// =============================================================================
-
 static void scan_table_draw_event_cb(lv_event_t * e) {
     lv_obj_draw_part_dsc_t * dsc = (lv_obj_draw_part_dsc_t *)lv_event_get_param(e);
     if(dsc->part == LV_PART_ITEMS) {
@@ -405,19 +390,20 @@ void UIManager::deleteScanModal() {
 }
 
 void UIManager::updateScanModal(const SystemContext* ctx) {
-    if (ctx->state.curMode == MODE_DIAG_SCAN) {
+    if (ctx->ui.curMode == MODE_DIAG_SCAN) {
         if (!scan_modal) buildScanModal();
         char buf[64];
-        snprintf(buf, sizeof(buf), "探测中... 第 %d / 5 轮 (进度: %d / 20)", ctx->state.currentScanCycle + 1, ctx->state.scanProgress);
+        snprintf(buf, sizeof(buf), "探测中... 第 %d / 5 轮 (进度: %d / 20)", ctx->diag.currentScanCycle + 1, ctx->diag.scanProgress);
         lv_label_set_text(scan_progress_label, buf);
         if (scan_table) {
             for (int c = 0; c < 5; c++) {
                 for (int i = 0; i < 20; i++) {
-                    bool isPastCycle = (c < ctx->state.currentScanCycle);
-                    bool isCurrentCycleProgress = (c == ctx->state.currentScanCycle && i < ctx->state.scanProgress);
+                    int physicalId = i + 1;
+                    bool isPastCycle = (c < ctx->diag.currentScanCycle);
+                    bool isCurrentCycleProgress = (c == ctx->diag.currentScanCycle && physicalId < ctx->diag.scanProgress);
                     if (isPastCycle || isCurrentCycleProgress) {
-                        lv_table_set_cell_value(scan_table, c, i, ctx->state.scanResults[c][i] ? "P" : "F");
-                    } else if (c == ctx->state.currentScanCycle && i == ctx->state.scanProgress) {
+                        lv_table_set_cell_value(scan_table, c, i, ctx->diag.scanResults[c][physicalId] ? "P" : "F");
+                    } else if (c == ctx->diag.currentScanCycle && physicalId == ctx->diag.scanProgress) {
                         lv_table_set_cell_value(scan_table, c, i, "S");
                     }
                 }
@@ -426,8 +412,12 @@ void UIManager::updateScanModal(const SystemContext* ctx) {
         }
     } else if (scan_modal) {
         if (scan_table) {
-            for (int c = 0; c < 5; c++) for (int i = 0; i < 20; i++) 
-                lv_table_set_cell_value(scan_table, c, i, ctx->state.scanResults[c][i] ? "P" : "F");
+            for (int c = 0; c < 5; c++) {
+                for (int i = 0; i < 20; i++) {
+                    int physicalId = i + 1;
+                    lv_table_set_cell_value(scan_table, c, i, ctx->diag.scanResults[c][physicalId] ? "P" : "F");
+                }
+            }
             lv_obj_invalidate(scan_table);
         }
         lv_label_set_text(scan_title_label, "扫描完成");
@@ -441,11 +431,11 @@ void UIManager::updateDashboard(const SystemContext* ctx) {
     if (!ctx) return;
     updateScanModal(ctx);
     char buf[64];
-    if (ctx->state.curMode == MODE_DIAG_SCAN) {
+    if (ctx->ui.curMode == MODE_DIAG_SCAN) {
         lv_label_set_text(status_label, "正在诊断与生成白名单..."); 
         lv_obj_set_style_text_color(status_label, lv_color_hex(0x8B5CF6), 0);
     } else {
-        switch (ctx->state.status) {
+        switch (ctx->prog.status) {
             case SYS_READY: 
                 lv_label_set_text(status_label, "就绪"); 
                 lv_obj_set_style_text_color(status_label, lv_color_hex(0x22C55E), 0);
@@ -469,30 +459,30 @@ void UIManager::updateDashboard(const SystemContext* ctx) {
     lv_label_set_text(accu_weight_label, buf);
     snprintf(buf, sizeof(buf), "目标: %.1f-%.1fg", ctx->config.targetMin, ctx->config.targetMax);
     lv_label_set_text(target_label, buf);
-    snprintf(buf, sizeof(buf), "%.1f g", ctx->state.lastBatchWeight);
+    snprintf(buf, sizeof(buf), "%.1f g", ctx->prog.lastBatchWeight);
     lv_label_set_text(huge_combo_label, buf);
 
-    uint32_t mask = ctx->state.selectionMask;
-    for(int i = 0; i < NUM_SLAVES; i++) {
+    uint32_t mask = ctx->prog.selectionMask;
+    for(int i = 1; i <= NUM_SLAVES; i++) {
         if (!node_bars[i]) continue;
-        float weight = ctx->state.currentWeights[i];
+        float weight = ctx->ui.currentWeights[i];
         lv_bar_set_value(node_bars[i], (int)weight, LV_ANIM_OFF);
         snprintf(buf, sizeof(buf), "%.0f", weight);
         lv_label_set_text(node_weight_labels[i], buf);
-        lv_obj_set_style_bg_color(node_bars[i], ctx->state.whitelistedNodes[i] ? lv_color_hex(0x064E3B) : lv_color_hex(0x7F1D1D), LV_PART_MAIN);
+        lv_obj_set_style_bg_color(node_bars[i], ctx->ui.whitelistedNodes[i] ? lv_color_hex(0x064E3B) : lv_color_hex(0x7F1D1D), LV_PART_MAIN);
         lv_obj_set_style_text_color(node_weight_labels[i], lv_color_hex(0x22C55E), 0);
-        if (mask & (1 << i)) lv_obj_set_style_bg_color(node_bars[i], lv_color_hex(0x22C55E), LV_PART_INDICATOR);
-        else if (ctx->state.stableNodes[i]) lv_obj_set_style_bg_color(node_bars[i], lv_color_hex(0x10B981), LV_PART_INDICATOR);
+        if (mask & (1 << (i - 1))) lv_obj_set_style_bg_color(node_bars[i], lv_color_hex(0x22C55E), LV_PART_INDICATOR);
+        else if (ctx->ui.stableNodes[i]) lv_obj_set_style_bg_color(node_bars[i], lv_color_hex(0x10B981), LV_PART_INDICATOR);
         else lv_obj_set_style_bg_color(node_bars[i], lv_color_hex(0x475569), LV_PART_INDICATOR);
     }
 
     if (admin_tab) {
-        bool isPulse = (ctx->state.curMode == MODE_DIAG_PULSE);
+        bool isPulse = (ctx->ui.curMode == MODE_DIAG_PULSE);
         if (isPulse) {
             char buf[64];
-            snprintf(buf, sizeof(buf), "发送测试: 0x%02X (1Hz)", ctx->state.diagLastSent);
+            snprintf(buf, sizeof(buf), "发送测试: 0x%02X (1Hz)", ctx->diag.diagLastSent);
             lv_label_set_text(diag_tx_label, buf);
-            lv_label_set_text(diag_rx_label, ctx->state.diagRxHex);
+            lv_label_set_text(diag_rx_label, ctx->diag.diagRxHex);
         } else {
             if (diag_tx_label) lv_label_set_text(diag_tx_label, "发送测试: 已停止");
         }
