@@ -262,29 +262,42 @@ void AppController::uiTaskEntry(void* self) {
 
 void AppController::uiLoop() {
     Serial.println("[TASK] UI/LVGL Task Started on Core 0");
-    while (true) {
-        // Phase 4: [DIRECT ATOMIC SNAPSHOT] UI 直接跨层查询 PollManager，绕过 AppController 本地副本
-        _ctx.ui.curMode = _pollMgr->getMode();
-        for (int i = 1; i <= 20; i++) {
-            _ctx.ui.currentWeights[i]   = _pollMgr->getWeight(i);
-            _ctx.ui.stableNodes[i]      = _pollMgr->isStable(i);
-            _ctx.ui.onlineNodes[i]      = _pollMgr->isOnline(i);
-            _ctx.ui.whitelistedNodes[i] = _pollMgr->isWhitelisted(i);
-        }
+    static unsigned long frameCount = 0;
+    static unsigned long totalLogicMs = 0;
+    static unsigned long totalRenderMs = 0;
 
-        // 同步生产状态（受 mutexProduction 保护的小型数据域）
+    while (true) {
+        unsigned long start = millis();
+        // Phase 4 优化后的数据同步
+        _pollMgr->fillUISnapshot(_ctx.ui);
+
         xSemaphoreTake(_mutexProduction, portMAX_DELAY);
-        // _ctx.prog 结构体在 controlLoop 中填充，此处仅为影子同步
         xSemaphoreGive(_mutexProduction);
 
-        // 同步诊断数据（受 mutexDiag 保护）
         xSemaphoreTake(_mutexDiag, portMAX_DELAY);
-        // _ctx.diag 已在其他任务中实时填充
         xSemaphoreGive(_mutexDiag);
 
+        unsigned long logicEnd = millis();
         _ui->updateDashboard(&_ctx);
+        
         lv_tick_inc(33);
         lv_timer_handler();
+        unsigned long renderEnd = millis();
+
+        totalLogicMs += (logicEnd - start);
+        totalRenderMs += (renderEnd - logicEnd);
+        frameCount++;
+
+        if (frameCount >= 100) {
+            Serial.printf("[PERF] UI 100-Frame Avg: Logic %.1f ms, Render %.1f ms, FPS %.1f\n",
+                          (float)totalLogicMs / 100.0f,
+                          (float)totalRenderMs / 100.0f,
+                          1000.0f / ((float)(totalLogicMs + totalRenderMs) / 100.04f + 33.0f));
+            frameCount = 0;
+            totalLogicMs = 0;
+            totalRenderMs = 0;
+        }
+
         vTaskDelay(pdMS_TO_TICKS(33));
     }
 }

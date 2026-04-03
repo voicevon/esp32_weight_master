@@ -52,6 +52,13 @@ void PollManager::process() {
 }
 
 void PollManager::handleProductionPoll() {
+    // 性能诊断：起始点记录
+    if (_processedInCycle == 0) {
+        _lastCycleStartTime = millis();
+        _whitelistedInCycle = 0;
+        for (int i = 1; i <= 20; i++) if (_nodes[i].whitelisted) _whitelistedInCycle++;
+    }
+
     // 白名单过滤策略：寻找下一个在白名单的 ID
     uint8_t nextId = _currentPollId;
     for (int i = 0; i < 20; i++) {
@@ -60,11 +67,16 @@ void PollManager::handleProductionPoll() {
     }
     _currentPollId = nextId;
 
-    // 下发原子读取指令 (地址 0x0000, 6 个寄存器)
-    // 注意：ModbusMaster 将提供异步接口，回调通过 static helper 路由给实例
-    // 显式传递所属节点的缓冲区物理地址
-    // 库会将此地址返回给 onPollComplete 的 data 参数
-    _mb->asyncRead(_currentPollId, 0x0000, 8, onPollComplete, _nodes[_currentPollId].registers);
+    // 下发原子读取指令
+    bool ok = _mb->asyncRead(_currentPollId, 0x0000, 8, onPollComplete, _nodes[_currentPollId].registers);
+    if (ok) {
+        _processedInCycle++;
+        if (_processedInCycle >= _whitelistedInCycle) {
+            unsigned long duration = millis() - _lastCycleStartTime;
+            Serial.printf("[PERF] Poll Cycle: %lu ms (Nodes: %d)\n", duration, _whitelistedInCycle);
+            _processedInCycle = 0; // 重置下一周期
+        }
+    }
 }
 
 void PollManager::handleScanPoll() {
@@ -161,6 +173,16 @@ int PollManager::getUnstableCount() const {
     int count = 0;
     for (int i = 1; i <= 20; i++) if (_nodes[i].online && !_nodes[i].stable) count++;
     return count;
+}
+
+void PollManager::fillUISnapshot(UISnapshot& snapshot) const {
+    snapshot.curMode = _curMode;
+    for (int i = 1; i <= 20; i++) {
+        snapshot.currentWeights[i]   = _nodes[i].weight;
+        snapshot.stableNodes[i]      = _nodes[i].stable;
+        snapshot.onlineNodes[i]      = _nodes[i].online;
+        snapshot.whitelistedNodes[i] = _nodes[i].whitelisted;
+    }
 }
 
 uint32_t PollManager::getWhitelistMask() const {

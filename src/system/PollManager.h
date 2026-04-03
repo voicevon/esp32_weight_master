@@ -40,6 +40,9 @@ public:
         return (cycle >= 0 && cycle < 5 && id >= 1 && id <= 20) ? _scanHistory[cycle][id] : false; 
     }
 
+    // 批量同步接口 (Phase 4 性能优化: 减少 API 调用开销)
+    void fillUISnapshot(UISnapshot& snapshot) const;
+
     // 白名单持久化
     void saveWhitelist();
     void loadWhitelist();
@@ -68,6 +71,9 @@ private:
 
     // 轮询 ID 管理
     uint8_t _currentPollId = 1;
+    unsigned long _lastCycleStartTime = 0;
+    int _whitelistedInCycle = 0;
+    int _processedInCycle = 0;
 
     // static 回调实例指针（替代 extern 全局单例依赖）
     static PollManager* _instance;

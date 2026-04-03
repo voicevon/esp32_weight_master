@@ -13,6 +13,7 @@ LV_FONT_DECLARE(ui_font_chs_16);
 extern const lv_font_t lv_font_montserrat_48;
 extern const lv_font_t lv_font_montserrat_16;
 extern const lv_font_t lv_font_montserrat_26;
+extern const lv_font_t lv_font_montserrat_12;
 
 class UIManager {
 public:
@@ -49,7 +50,7 @@ private:
     lv_obj_t* scan_bar = nullptr;
     lv_obj_t* scan_title_label = nullptr;
     lv_obj_t* scan_progress_label = nullptr;
-    lv_obj_t* scan_table = nullptr;
+    lv_obj_t* scan_blocks[5][21]; // [cycle][id]
     lv_obj_t* scan_confirm_btn = nullptr;
     uint32_t scan_finish_timer = 0;
 
@@ -60,6 +61,10 @@ private:
     lv_obj_t *diag_switch = nullptr;
 
     ICommandBus* _bus = nullptr;
+
+    // --- Performance Optimization (Dirty Check) ---
+    UISnapshot _lastSnapshot;
+    bool _isFirstUpdate = true;
 };
 
 #endif // UI_MANAGER_H
