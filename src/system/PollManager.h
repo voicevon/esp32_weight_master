@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include "ModbusMaster.h"
 #include "SystemTypes.h"
+#include "I_Command_Bus.h"
 
 /**
  * @class PollManager
@@ -14,6 +15,7 @@ class PollManager {
 public:
     PollManager(ModbusMaster* master);
     void begin();
+    void setCommandBus(ICommandBus* bus) { _bus = bus; }
 
     // 核心调度接口：在业务循环中非阻塞调用
     void process(); 
@@ -70,6 +72,7 @@ private:
     static PollManager* _instance;
 
     // 内部帮助函数
+    ICommandBus* _bus = nullptr;
     void handleProductionPoll();
     void handleScanPoll();
     void updateNodeFromRegisters(int id, uint16_t* regs);

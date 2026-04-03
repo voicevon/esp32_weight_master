@@ -6,6 +6,7 @@
 #include <vector>
 #include "system/SystemContext.h"
 #include "system/PinDefinition.h"
+#include "I_Command_Bus.h"
 
 // Font declarations
 LV_FONT_DECLARE(ui_font_chs_16);
@@ -19,6 +20,8 @@ public:
     void init();
     void updateDashboard(const SystemContext* ctx);
     void deleteScanModal();
+    void setCommandBus(ICommandBus* bus) { _bus = bus; }
+    ICommandBus* getBus() const { return _bus; }
 
 private:
     void buildUserSettingsView(lv_obj_t* parent);
@@ -55,13 +58,8 @@ private:
     lv_obj_t *diag_tx_label = nullptr;
     lv_obj_t *diag_rx_label = nullptr;
     lv_obj_t *diag_switch = nullptr;
+
+    ICommandBus* _bus = nullptr;
 };
 
-// UI Commands linking to main scope logic
-extern void cmdGlobalTare();
-extern void cmdClearAccumulated();
-extern void cmdUpdateTargets(float min_val, float max_val);
-extern void cmdStartScan();
-extern void cmdGenerateWhitelist();
-
-#endif
+#endif // UI_MANAGER_H

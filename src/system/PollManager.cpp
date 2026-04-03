@@ -108,8 +108,7 @@ bool PollManager::onPollComplete(Modbus::ResultCode event, uint16_t transactionI
             if (pollManager._scanCycle >= 5) {
                 // 5 轮扫完，生成最终白名单并退出扫描模式
                 pollManager.saveWhitelist(); // 内部自动从 scanHistory 生成
-                extern void updateOperationMode(OperationMode mode);
-                updateOperationMode(MODE_CONFIGURATION);
+                if (pollManager._bus) pollManager._bus->updateOperationMode(MODE_CONFIGURATION);
             }
         }
     }
