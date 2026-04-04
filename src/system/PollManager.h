@@ -30,6 +30,7 @@ public:
     bool isWhitelisted(int id) const;
     NodeStatus getNodeStatus(int id) const;
     void setNodeStatus(int id, NodeStatus s);
+    void setServoState(int id, bool open);
     
     // 聚合统计
     int getUnstableCount() const;
@@ -59,6 +60,7 @@ private:
         uint8_t doorPhase = 0;
         bool online = false;
         bool whitelisted = true;
+        bool servoOpen = false; // 用户测试指令下的开合状态
         uint8_t failCounter = 0;
         uint16_t lastDataId = 0;
         NodeStatus status = NODE_DIRTY;

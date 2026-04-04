@@ -34,6 +34,7 @@ public:
     void cmdClearAccumulated() override;
     void cmdUpdateTargets(float dMin, float dMax) override;
     void cmdToggleDiagnosis(bool active) override;
+    void cmdServoTest(int id, bool open) override;
     void updateOperationMode(OperationMode newMode) override;
 
 private:

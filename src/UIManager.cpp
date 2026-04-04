@@ -21,9 +21,8 @@ UIManager::UIManager() {
     for(int r=0; r<5; r++) {
         for(int c=0; c<21; c++) scan_blocks[r][c] = nullptr;
     }
-    diag_tx_label = nullptr;
-    diag_rx_label = nullptr;
     diag_switch = nullptr;
+    for(int i=0; i<21; i++) servo_btns[i] = nullptr;
     _bus = nullptr;
 }
 
@@ -35,6 +34,9 @@ static void tab_change_event_cb(lv_event_t * e) {
     if (ui && ui->getBus()) {
         if (tab_id == 0) {
             ui->getBus()->updateOperationMode(MODE_PRODUCTION);
+        } else if (tab_id == 2) {
+            // 系统维护 Tab：默认进入舵机测试模式以静默总线
+            ui->getBus()->updateOperationMode(MODE_SERVO_TEST);
         } else {
             ui->getBus()->updateOperationMode(MODE_CONFIGURATION);
         }
@@ -73,6 +75,22 @@ static void diag_switch_event_cb(lv_event_t * e) {
     if (ui && ui->getBus()) ui->getBus()->cmdToggleDiagnosis(active);
 }
 
+static void servo_test_event_cb(lv_event_t * e) {
+    UIManager* ui = (UIManager*)lv_event_get_user_data(e);
+    lv_obj_t * btn = lv_event_get_target(e);
+    int id = 0;
+    for(int i=1; i<=20; i++) {
+        if(ui->getServoBtn(i) == btn) {
+            id = i;
+            break;
+        }
+    }
+    if (id > 0 && ui->getBus()) {
+        bool open = lv_obj_has_state(btn, LV_STATE_CHECKED);
+        ui->getBus()->cmdServoTest(id, open);
+    }
+}
+
 static void scan_confirm_btn_cb(lv_event_t * e) {
     UIManager * ui = (UIManager*)lv_event_get_user_data(e);
     if(ui) ui->deleteScanModal();
@@ -102,7 +120,7 @@ void UIManager::init() {
     lv_obj_set_style_border_width(dashboard_tab, 0, 0);
     lv_obj_set_scrollbar_mode(dashboard_tab, LV_SCROLLBAR_MODE_OFF);
     lv_obj_set_scrollbar_mode(user_tab, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_set_scrollbar_mode(admin_tab, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_scrollbar_mode(admin_tab, LV_SCROLLBAR_MODE_AUTO);
 
     buildDashboardView(dashboard_tab);
     buildUserSettingsView(user_tab);
@@ -117,6 +135,8 @@ void UIManager::buildDashboardView(lv_obj_t* parent) {
     lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 0);
     lv_obj_set_style_bg_color(header, lv_color_hex(0x1E293B), 0);
     lv_obj_set_style_border_width(header, 0, 0);
+    lv_obj_set_style_pad_all(header, 0, 0);
+    lv_obj_set_scrollbar_mode(header, LV_SCROLLBAR_MODE_OFF);
 
     status_label = lv_label_create(header);
     lv_obj_set_style_text_font(status_label, &ui_font_chs_16, 0);
@@ -136,37 +156,69 @@ void UIManager::buildDashboardView(lv_obj_t* parent) {
     lv_label_set_text(target_label, "目标: 290-310g");
     lv_obj_align(target_label, LV_ALIGN_RIGHT_MID, -10, 0);
 
+    // 新增：置零按钮 (位于状态文字旁)
+    lv_obj_t* btn_tare = lv_btn_create(header);
+    lv_obj_set_size(btn_tare, 80, 32);
+    lv_obj_align(btn_tare, LV_ALIGN_LEFT_MID, 130, 0);
+    lv_obj_set_style_bg_color(btn_tare, lv_color_hex(0x475569), 0);
+    lv_obj_set_style_border_width(btn_tare, 1, 0);
+    lv_obj_set_style_border_color(btn_tare, lv_color_hex(0x94A3B8), 0);
+    lv_obj_set_style_pad_all(btn_tare, 0, 0);
+    lv_obj_add_event_cb(btn_tare, btn_tare_event_cb, LV_EVENT_CLICKED, this);
+
+    lv_obj_t* lbl_tare = lv_label_create(btn_tare);
+    lv_obj_set_style_text_font(lbl_tare, &ui_font_chs_16, 0);
+    lv_label_set_text(lbl_tare, "置零");
+    lv_obj_center(lbl_tare);
+
     lv_obj_t* center_area = lv_obj_create(parent);
     lv_obj_set_size(center_area, 800, 160);
     lv_obj_align(center_area, LV_ALIGN_TOP_MID, 0, 60);
     lv_obj_set_style_bg_color(center_area, lv_color_hex(0x0F172A), 0);
     lv_obj_set_style_border_width(center_area, 0, 0);
+    lv_obj_set_style_pad_all(center_area, 0, 0);
+    lv_obj_set_scrollbar_mode(center_area, LV_SCROLLBAR_MODE_OFF);
 
-    lv_obj_set_flex_flow(center_area, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(center_area, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_column(center_area, 20, 0);
-
+    // 段 1: 已稳重量 (主位 - 正中心)
     label_stable_total = lv_label_create(center_area);
+    lv_obj_set_size(label_stable_total, 200, 60);
     lv_obj_set_style_text_font(label_stable_total, &lv_font_montserrat_48, 0);
-    lv_obj_set_style_text_color(label_stable_total, lv_color_hex(0xFBBF24), 0);
-    lv_label_set_text(label_stable_total, "0.0 g");
+    lv_obj_set_style_text_color(label_stable_total, lv_color_hex(0x10B981), 0);
+    lv_obj_set_style_text_align(label_stable_total, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(label_stable_total, LV_ALIGN_CENTER, 0, -5);
+    lv_label_set_text(label_stable_total, "0 g");
 
+    // 段 2: 未稳重量 (增量位 - 中心偏右)
     label_unstable_total = lv_label_create(center_area);
+    lv_obj_set_size(label_unstable_total, 180, 40);
     lv_obj_set_style_text_font(label_unstable_total, &lv_font_montserrat_26, 0);
-    lv_obj_set_style_text_color(label_unstable_total, lv_color_hex(0xF59E0B), 0);
+    lv_obj_set_style_text_color(label_unstable_total, lv_color_hex(0xF59E0B), 0); 
+    lv_obj_set_style_text_align(label_unstable_total, LV_TEXT_ALIGN_LEFT, 0);
+    lv_obj_align(label_unstable_total, LV_ALIGN_TOP_LEFT, 505, 50); // 紧跟已稳重量 (400 + 100 + 5 偏移)
     lv_label_set_text(label_unstable_total, "");
 
+    // 段 3: 合计 (状态位 - 左侧)
+    label_grand_total_prefix = lv_label_create(center_area);
+    lv_obj_set_style_text_font(label_grand_total_prefix, &ui_font_chs_16, 0);
+    lv_obj_set_style_text_color(label_grand_total_prefix, lv_color_hex(0x94A3B8), 0);
+    lv_label_set_text(label_grand_total_prefix, "合计:");
+    lv_obj_align(label_grand_total_prefix, LV_ALIGN_LEFT_MID, 20, 0);
+
     label_grand_total = lv_label_create(center_area);
-    lv_obj_set_style_text_font(label_grand_total, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_color(label_grand_total, lv_color_hex(0x94A3B8), 0);
-    lv_label_set_text(label_grand_total, "");
+    lv_obj_set_size(label_grand_total, 150, 40);
+    lv_obj_set_style_text_font(label_grand_total, &lv_font_montserrat_26, 0);
+    lv_obj_set_style_text_color(label_grand_total, lv_color_hex(0xE2E8F0), 0);
+    lv_obj_set_style_text_align(label_grand_total, LV_TEXT_ALIGN_LEFT, 0);
+    lv_obj_align(label_grand_total, LV_ALIGN_LEFT_MID, 65, 0);
+    lv_label_set_text(label_grand_total, "0 g");
 
     lv_obj_t* graph_container = lv_obj_create(parent);
-    lv_obj_set_size(graph_container, 800, 200);
+    lv_obj_set_size(graph_container, 800, 260); // 拉高到 260
     lv_obj_align(graph_container, LV_ALIGN_TOP_MID, 0, 220);
     lv_obj_set_style_bg_color(graph_container, lv_color_hex(0x0F172A), 0);
     lv_obj_set_style_border_width(graph_container, 0, 0);
     lv_obj_set_style_pad_all(graph_container, 0, 0);
+    lv_obj_set_scrollbar_mode(graph_container, LV_SCROLLBAR_MODE_OFF);
     lv_obj_set_flex_flow(graph_container, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(graph_container, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_column(graph_container, 2, 0);
@@ -174,13 +226,13 @@ void UIManager::buildDashboardView(lv_obj_t* parent) {
     for(int i = 1; i <= NUM_SLAVES; i++) {
         if (i > 20) break;
         lv_obj_t* col = lv_obj_create(graph_container);
-        lv_obj_set_size(col, 38, 180);
+        lv_obj_set_size(col, 38, 240); // 拉高
         lv_obj_set_style_bg_opa(col, 0, 0);
         lv_obj_set_style_border_width(col, 0, 0);
         lv_obj_set_style_pad_all(col, 0, 0);
 
         lv_obj_t* bar = lv_bar_create(col);
-        lv_obj_set_size(bar, 34, 120);
+        lv_obj_set_size(bar, 34, 180); // 拉高
         lv_obj_align(bar, LV_ALIGN_TOP_MID, 0, 0);
         lv_bar_set_range(bar, 0, 150);
         lv_bar_set_value(bar, 0, LV_ANIM_OFF);
@@ -190,7 +242,7 @@ void UIManager::buildDashboardView(lv_obj_t* parent) {
         lv_obj_set_style_text_font(label, &lv_font_montserrat_16, 0);
         lv_obj_set_style_text_color(label, lv_color_hex(0x94A3B8), 0);
         lv_label_set_text(label, "0");
-        lv_obj_align(label, LV_ALIGN_TOP_MID, 0, 130);
+        lv_obj_align(label, LV_ALIGN_TOP_MID, 0, 190); // 往下移
         
         node_bars[i] = bar;
         node_weight_labels[i] = label;
@@ -319,6 +371,33 @@ void UIManager::buildAdminView(lv_obj_t* parent) {
     lv_obj_set_style_text_color(diag_rx_label, lv_color_hex(0x22C55E), 0);
     lv_label_set_text(diag_rx_label, "---");
     lv_obj_align(diag_rx_label, LV_ALIGN_TOP_LEFT, 0, 75);
+
+    // --- 舵机测试专区 ---
+    lv_obj_t* servo_title = lv_label_create(parent);
+    lv_obj_set_style_text_font(servo_title, &ui_font_chs_16, 0);
+    lv_obj_set_style_text_color(servo_title, lv_color_white(), 0);
+    lv_label_set_text(servo_title, "舵机维护测试 (1-20 号机 / 乒乓开关)");
+    lv_obj_set_style_pad_top(servo_title, 15, 0);
+
+    lv_obj_t* servo_panel = lv_obj_create(parent);
+    lv_obj_set_size(servo_panel, 740, 120);
+    lv_obj_set_style_bg_color(servo_panel, lv_color_hex(0x1E293B), 0);
+    lv_obj_set_flex_flow(servo_panel, LV_FLEX_FLOW_ROW_WRAP);
+    lv_obj_set_flex_align(servo_panel, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_all(servo_panel, 10, 0);
+    lv_obj_set_style_pad_gap(servo_panel, 8, 0);
+
+    for(int i=1; i<=20; i++) {
+        servo_btns[i] = lv_btn_create(servo_panel);
+        lv_obj_set_size(servo_btns[i], 60, 35);
+        lv_obj_add_flag(servo_btns[i], LV_OBJ_FLAG_CHECKABLE);
+        lv_obj_add_event_cb(servo_btns[i], servo_test_event_cb, LV_EVENT_VALUE_CHANGED, this);
+        
+        lv_obj_t* lbl = lv_label_create(servo_btns[i]);
+        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_12, 0);
+        lv_label_set_text_fmt(lbl, "%d", i);
+        lv_obj_center(lbl);
+    }
 }
 
 
@@ -518,20 +597,18 @@ void UIManager::updateDashboard(const SystemContext* ctx) {
     }
 
     // 2. 生产数据统计 (Dirty Check)
-    // 注意：UISnapshot 结构体中没有包含 config 字段，我们通过 static 变量进行 Dirty Check。
-    
-    // 这里简单处理：如果数值没变且不是第一次更新，跳过格式化字符串
     static float lastAccu = -1.0f;
     if (_isFirstUpdate || ctx->config.accumulatedWeight != lastAccu) {
         lastAccu = ctx->config.accumulatedWeight;
-        snprintf(buf, sizeof(buf), "总产量: %.1fg", lastAccu);
+        // 用户要求显示为 kg, 三位小数 (1.234 kg 格式)
+        snprintf(buf, sizeof(buf), "总产量: %.3f kg", lastAccu / 1000.0f);
         lv_label_set_text(accu_weight_label, buf);
     }
 
     static float lastMin = -1.0f, lastMax = -1.0f;
     if (_isFirstUpdate || ctx->config.targetMin != lastMin || ctx->config.targetMax != lastMax) {
         lastMin = ctx->config.targetMin; lastMax = ctx->config.targetMax;
-        snprintf(buf, sizeof(buf), "目标: %.1f-%.1fg", lastMin, lastMax);
+        snprintf(buf, sizeof(buf), "目标: %.0f-%.0fg", lastMin, lastMax);
         lv_label_set_text(target_label, buf);
     }
 
@@ -541,21 +618,23 @@ void UIManager::updateDashboard(const SystemContext* ctx) {
         lastStable = ctx->ui.stableWeightSum;
         lastUnstable = ctx->ui.unstableWeightSum;
         
-        // 已稳总重
-        snprintf(buf, sizeof(buf), "%.1f g", lastStable);
+        // 段 1: 已稳重量 (限定 999g 以内)
+        snprintf(buf, sizeof(buf), "%d g", (int)fminf(lastStable, 999.0f));
         lv_label_set_text(label_stable_total, buf);
+        lv_obj_set_style_text_color(label_stable_total, lv_color_hex(0x10B981), 0);
         
-        // 未稳总重
+        // 段 2: 未稳重量 (紧跟 + 符号)
         if (lastUnstable > 0.1f) {
-            snprintf(buf, sizeof(buf), "+ %.1f g", lastUnstable);
+            snprintf(buf, sizeof(buf), "+ %d g", (int)fminf(lastUnstable, 999.0f));
             lv_label_set_text(label_unstable_total, buf);
+            lv_obj_set_style_text_color(label_unstable_total, lv_color_hex(0xF59E0B), 0);
             lv_obj_clear_flag(label_unstable_total, LV_OBJ_FLAG_HIDDEN);
         } else {
             lv_obj_add_flag(label_unstable_total, LV_OBJ_FLAG_HIDDEN);
         }
         
-        // 合计
-        snprintf(buf, sizeof(buf), "(Total: %.1fg)", lastStable + lastUnstable);
+        // 合计 (仅数值部分)
+        snprintf(buf, sizeof(buf), "%d g", (int)fminf(lastStable + lastUnstable, 999.0f));
         lv_label_set_text(label_grand_total, buf);
     }
 
@@ -610,6 +689,19 @@ void UIManager::updateDashboard(const SystemContext* ctx) {
             // 这里可以增加对 hexBuf 的 Dirty Check，但诊断界面通常不需要极致性能
             lv_label_set_text(diag_tx_label, "发送测试中..."); 
             lv_label_set_text(diag_rx_label, ctx->diag.diagRxHex);
+        }
+        
+        // 5. 舵机测试状态同步 (红/绿/紫 3色逻辑)
+        for(int i=1; i<=20; i++) {
+            if (!servo_btns[i]) continue;
+            int8_t state = ctx->ui.servoRealStates[i];
+            uint32_t color = 0x475569; // 默认深灰
+            
+            if (state == 1)      color = 0x22C55E; // 绿色 (开)
+            else if (state == 0) color = 0xA855F7; // 紫色 (关)
+            else if (state == -1) color = 0xEF4444; // 红色 (故障/离线)
+            
+            lv_obj_set_style_bg_color(servo_btns[i], lv_color_hex(color), 0);
         }
     }
 

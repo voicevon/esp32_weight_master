@@ -23,6 +23,7 @@ public:
     void deleteScanModal();
     void setCommandBus(ICommandBus* bus) { _bus = bus; }
     ICommandBus* getBus() const { return _bus; }
+    lv_obj_t* getServoBtn(int id) { return (id >= 1 && id <= 20) ? servo_btns[id] : nullptr; }
 
 private:
     void buildUserSettingsView(lv_obj_t* parent);
@@ -43,6 +44,7 @@ private:
     lv_obj_t* huge_combo_label = nullptr;
     lv_obj_t* label_stable_total = nullptr;
     lv_obj_t* label_unstable_total = nullptr;
+    lv_obj_t* label_grand_total_prefix = nullptr;
     lv_obj_t* label_grand_total = nullptr;
     lv_obj_t* spinbox_min = nullptr;
     lv_obj_t* spinbox_max = nullptr;
@@ -55,6 +57,7 @@ private:
     lv_obj_t* scan_progress_label = nullptr;
     lv_obj_t* scan_blocks[5][21]; // [cycle][id]
     lv_obj_t* scan_confirm_btn = nullptr;
+    lv_obj_t* servo_btns[21];    // 舵机测试按钮引用
     uint32_t scan_finish_timer = 0;
 
     // --- Admin / Maintenance Section ---

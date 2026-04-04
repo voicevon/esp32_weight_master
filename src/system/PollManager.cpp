@@ -46,6 +46,9 @@ void PollManager::process() {
         case MODE_DIAG_SCAN:
             handleScanPoll();
             break;
+        case MODE_SERVO_TEST:
+            // 独占总线模式：静默背景轮询，仅响应 AppController 的主动写指令
+            break;
         default:
             break;
     }
@@ -181,6 +184,7 @@ bool PollManager::isOnline(int id) const { return (id >= 1 && id <= 20) ? _nodes
 bool PollManager::isWhitelisted(int id) const { return (id >= 1 && id <= 20) ? _nodes[id].whitelisted : false; }
 NodeStatus PollManager::getNodeStatus(int id) const { return (id >= 1 && id <= 20) ? _nodes[id].status : NODE_DIRTY; }
 void PollManager::setNodeStatus(int id, NodeStatus s) { if (id >= 1 && id <= 20) _nodes[id].status = s; }
+void PollManager::setServoState(int id, bool open) { if (id >= 1 && id <= 20) _nodes[id].servoOpen = open; }
 
 int PollManager::getUnstableCount() const {
     int count = 0;
@@ -197,6 +201,13 @@ void PollManager::fillUISnapshot(UISnapshot& snapshot) const {
         snapshot.onlineNodes[i]      = _nodes[i].online;
         snapshot.whitelistedNodes[i] = _nodes[i].whitelisted;
         
+        // 3色状态映射：1=开(绿), 0=关(紫), -1=故障(红)
+        if (!_nodes[i].online) {
+            snapshot.servoRealStates[i] = -1; // 离线/故障
+        } else {
+            snapshot.servoRealStates[i] = _nodes[i].servoOpen ? 1 : 0;
+        }
+
         if (_nodes[i].online && _nodes[i].whitelisted) {
             if (_nodes[i].stable) sSum += _nodes[i].weight;
             else uSum += _nodes[i].weight;

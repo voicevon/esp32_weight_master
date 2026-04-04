@@ -24,6 +24,18 @@ void AppController::cmdToggleDiagnosis(bool active) {
     updateOperationMode(active ? MODE_DIAG_PULSE : MODE_PRODUCTION);
 }
 
+void AppController::cmdServoTest(int id, bool open) {
+    if (id < 1 || id > 20) return;
+    
+    // 增加 Node 10 专项诊断日志
+    if (id == 10) Serial.printf("[DIAG] Sending Servo %s to Node 10...\n", open ? "OPEN" : "CLOSE");
+    
+    bool ok = _rs485->syncWrite(id, 0x0100, open ? 1 : 2);
+    if (!ok && id == 10) Serial.println("[DIAG] Node 10: syncWrite FAILED (Timeout or Error)");
+    
+    _pollMgr->setServoState(id, open);
+}
+
 void AppController::cmdClearAccumulated() {
     xSemaphoreTake(_mutexProduction, portMAX_DELAY);
     _accumulatedWeight            = 0;
@@ -317,6 +329,7 @@ const char* AppController::modeToStr(OperationMode m) {
         case MODE_DIAG_DETAIL:     return "DIAG_DETAIL";
         case MODE_CONFIGURATION:   return "CONFIGURATION";
         case MODE_SEQUENTIAL_CTRL: return "SEQUENTIAL_CTRL";
+        case MODE_SERVO_TEST:      return "SERVO_TEST";
         case MODE_ABOUT:           return "ABOUT";
         default:                   return "UNKNOWN";
     }

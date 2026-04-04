@@ -18,6 +18,7 @@ public:
     virtual void cmdClearAccumulated() = 0;
     virtual void cmdUpdateTargets(float dMin, float dMax) = 0;
     virtual void cmdToggleDiagnosis(bool active) = 0;
+    virtual void cmdServoTest(int id, bool open) = 0;
     virtual void updateOperationMode(OperationMode mode) = 0;
 };
 

@@ -13,6 +13,7 @@ enum OperationMode {
     MODE_DIAG_DETAIL,   // 诊断：节点详情查看
     MODE_CONFIGURATION, // 配置模式
     MODE_SEQUENTIAL_CTRL, // 序列化控制模式 (开/关/置零)
+    MODE_SERVO_TEST,     // 舵机维护测试模式 (独占总线)
     MODE_ABOUT           // 关于界面
 };
 
@@ -92,6 +93,7 @@ struct UISnapshot {
     bool          stableNodes[21];
     bool          onlineNodes[21];
     bool          whitelistedNodes[21];
+    int8_t        servoRealStates[21]; // 0=紫色(关), 1=绿色(开), -1=红色(故障/离线)
     float         stableWeightSum;    // 已稳总重 (白名单内在线稳节点)
     float         unstableWeightSum;  // 未稳总值 (白名单内在线非稳节点)
 };
