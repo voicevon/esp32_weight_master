@@ -13,17 +13,53 @@
 // =============================================================================
 
 void AppController::cmdGlobalTare() {
-    Serial.println("[CMD] Starting Global Tare (Sequential)...");
+    if (_isTareRunning) return;
+
+    Serial.println("[CMD] Requesting Global Tare. Waiting for bus idle...");
+    
+    // 1. 原子化准备：等待当前 Modbus 事务结束 (微秒级等待，通常 < 100ms)
+    unsigned long startWait = millis();
+    while (!_pollMgr->isSafeToSwitch()) {
+        if (millis() - startWait > 500) {
+            Serial.println("[CMD] Timeout waiting for bus idle. Aborting.");
+            return;
+        }
+        vTaskDelay(pdMS_TO_TICKS(1));
+    }
+
+    // 2. 独占锁定：切换至序列控制模式以静默背景轮询
+    OperationMode oldMode = _ctx.ui.curMode;
+    updateOperationMode(MODE_SEQUENTIAL_CTRL);
+    _isTareRunning = true;
+    _tareProgress = 0;
+
+    Serial.println("[CMD] Global Tare (Exclusive Mode) Started.");
+
+    int onlineCount = 0;
+    for (int i = 1; i <= 20; i++) if (_pollMgr->isOnline(i)) onlineCount++;
+
+    int processed = 0;
     for (int i = 1; i <= 20; i++) {
         if (_pollMgr->isOnline(i)) {
-            Serial.printf("[CMD] Taring Node %d...\n", i);
+            Serial.printf("[CMD] Taring Node %d... (%d/%d)\n", i, processed + 1, onlineCount);
+            
+            // 使用 syncWrite 确保可靠执行 (内部包含确认机制)
             bool ok = _rs485->syncWrite(i, 0x0100, CMD_TARE);
             if (ok) Serial.printf("[CMD] Node %d: Tare SUCCESS\n", i);
             else   Serial.printf("[CMD] Node %d: Tare FAILED (Timeout)\n", i);
-            vTaskDelay(pdMS_TO_TICKS(20)); // 总线间隔
+            
+            processed++;
+            if (onlineCount > 0) _tareProgress = (processed * 100) / onlineCount;
+            vTaskDelay(pdMS_TO_TICKS(50)); // 必要的总线静默间隙
         }
     }
-    Serial.println("[CMD] Global Tare Finished.");
+
+    // 3. 恢复现场
+    _isTareRunning = false;
+    _tareProgress = 100;
+    updateOperationMode(oldMode);
+    
+    Serial.println("[CMD] Global Tare Finished. Returning to Normal Mode.");
 }
 
 void AppController::cmdStartScan() {
@@ -298,6 +334,10 @@ void AppController::uiLoop() {
         unsigned long start = millis();
         // Phase 4 优化后的数据同步
         _pollMgr->fillUISnapshot(_ctx.ui);
+        
+        // 同步序列控制状态
+        _ctx.ui.isTareRunning = _isTareRunning;
+        _ctx.ui.tareProgress = _tareProgress;
 
         xSemaphoreTake(_mutexProduction, portMAX_DELAY);
         xSemaphoreGive(_mutexProduction);

@@ -96,6 +96,10 @@ struct UISnapshot {
     int8_t        servoRealStates[21]; // 0=紫色(关), 1=绿色(开), -1=红色(故障/离线)
     float         stableWeightSum;    // 已稳总重 (白名单内在线稳节点)
     float         unstableWeightSum;  // 未稳总值 (白名单内在线非稳节点)
+    
+    // 序列控制进度 (用于 UI 锁定与反馈)
+    bool          isTareRunning;      // 是否正在执行全局置零
+    int           tareProgress;       // 置零进度 (0-100)
 };
 
 #endif

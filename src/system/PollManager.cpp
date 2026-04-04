@@ -31,24 +31,32 @@ void PollManager::setMode(OperationMode mode) {
     }
 }
 
+bool PollManager::isSafeToSwitch() const {
+    ModbusMaster::TransactionStatus status = _mb->getStatus();
+    return (status == ModbusMaster::ST_IDLE || 
+            status == ModbusMaster::ST_SUCCESS || 
+            status == ModbusMaster::ST_TIMEOUT || 
+            status == ModbusMaster::ST_ERROR);
+}
+
 void PollManager::process() {
     // 核心解耦点：只有当驱动层真正空闲时，业务调度层才下发任务 (Phase 4 修正：允许所有终态状态)
-    ModbusMaster::TransactionStatus status = _mb->getStatus();
-    if (status != ModbusMaster::ST_IDLE && status != ModbusMaster::ST_SUCCESS && 
-        status != ModbusMaster::ST_TIMEOUT && status != ModbusMaster::ST_ERROR) {
-        return;
-    }
+    if (!isSafeToSwitch()) return;
 
     switch (_curMode) {
         case MODE_PRODUCTION:
             handleProductionPoll();
             break;
+            
         case MODE_DIAG_SCAN:
             handleScanPoll();
             break;
+            
         case MODE_SERVO_TEST:
+        case MODE_SEQUENTIAL_CTRL:
             // 独占总线模式：静默背景轮询，仅响应 AppController 的主动写指令
             break;
+            
         default:
             break;
     }

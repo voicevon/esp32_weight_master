@@ -60,6 +60,12 @@ private:
     lv_obj_t* servo_btns[21];    // 舵机测试按钮引用
     uint32_t scan_finish_timer = 0;
 
+    // --- 序列化操作 UI 引用 ---
+    lv_obj_t* dashboard_tare_btn = nullptr;
+    lv_obj_t* dashboard_tare_lbl = nullptr;
+    lv_obj_t* settings_tare_btn = nullptr;
+    lv_obj_t* settings_tare_lbl = nullptr;
+
     // --- Admin / Maintenance Section ---
     void buildAdminView(lv_obj_t* parent);
     lv_obj_t *diag_tx_label = nullptr;

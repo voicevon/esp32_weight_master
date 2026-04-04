@@ -24,6 +24,11 @@ UIManager::UIManager() {
     diag_switch = nullptr;
     for(int i=0; i<21; i++) servo_btns[i] = nullptr;
     _bus = nullptr;
+
+    dashboard_tare_btn = nullptr;
+    dashboard_tare_lbl = nullptr;
+    settings_tare_btn = nullptr;
+    settings_tare_lbl = nullptr;
 }
 
 static void tab_change_event_cb(lv_event_t * e) {
@@ -44,8 +49,23 @@ static void tab_change_event_cb(lv_event_t * e) {
 }
 
 static void btn_tare_event_cb(lv_event_t * e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_obj_t * btn = lv_event_get_target(e);
+    lv_obj_t * label = lv_obj_get_child(btn, 0);
     UIManager* ui = (UIManager*)lv_event_get_user_data(e);
-    if (ui && ui->getBus()) ui->getBus()->cmdGlobalTare();
+
+    if (code == LV_EVENT_PRESSED) {
+        // 按下时变为琥珀色/黄色，提供即时视觉反馈
+        lv_obj_set_style_text_color(label, lv_color_hex(0xFBBF24), 0);
+    } else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
+        // 松开或移出时恢复白色
+        lv_obj_set_style_text_color(label, lv_color_white(), 0);
+        
+        // 仅在正常松开时触发业务逻辑
+        if (code == LV_EVENT_RELEASED) {
+            if (ui && ui->getBus()) ui->getBus()->cmdGlobalTare();
+        }
+    }
 }
 
 static void btn_clear_accu_event_cb(lv_event_t * e) {
@@ -157,19 +177,19 @@ void UIManager::buildDashboardView(lv_obj_t* parent) {
     lv_obj_align(target_label, LV_ALIGN_RIGHT_MID, -10, 0);
 
     // 新增：置零按钮 (位于状态文字旁)
-    lv_obj_t* btn_tare = lv_btn_create(header);
-    lv_obj_set_size(btn_tare, 80, 32);
-    lv_obj_align(btn_tare, LV_ALIGN_LEFT_MID, 130, 0);
-    lv_obj_set_style_bg_color(btn_tare, lv_color_hex(0x475569), 0);
-    lv_obj_set_style_border_width(btn_tare, 1, 0);
-    lv_obj_set_style_border_color(btn_tare, lv_color_hex(0x94A3B8), 0);
-    lv_obj_set_style_pad_all(btn_tare, 0, 0);
-    lv_obj_add_event_cb(btn_tare, btn_tare_event_cb, LV_EVENT_CLICKED, this);
+    dashboard_tare_btn = lv_btn_create(header);
+    lv_obj_set_size(dashboard_tare_btn, 80, 32);
+    lv_obj_align(dashboard_tare_btn, LV_ALIGN_LEFT_MID, 130, 0);
+    lv_obj_set_style_bg_color(dashboard_tare_btn, lv_color_hex(0x475569), 0);
+    lv_obj_set_style_border_width(dashboard_tare_btn, 1, 0);
+    lv_obj_set_style_border_color(dashboard_tare_btn, lv_color_hex(0x94A3B8), 0);
+    lv_obj_set_style_pad_all(dashboard_tare_btn, 0, 0);
+    lv_obj_add_event_cb(dashboard_tare_btn, btn_tare_event_cb, LV_EVENT_ALL, this);
 
-    lv_obj_t* lbl_tare = lv_label_create(btn_tare);
-    lv_obj_set_style_text_font(lbl_tare, &ui_font_chs_16, 0);
-    lv_label_set_text(lbl_tare, "置零");
-    lv_obj_center(lbl_tare);
+    dashboard_tare_lbl = lv_label_create(dashboard_tare_btn);
+    lv_obj_set_style_text_font(dashboard_tare_lbl, &ui_font_chs_16, 0);
+    lv_label_set_text(dashboard_tare_lbl, "置零");
+    lv_obj_center(dashboard_tare_lbl);
 
     lv_obj_t* center_area = lv_obj_create(parent);
     lv_obj_set_size(center_area, 800, 160);
@@ -260,14 +280,14 @@ void UIManager::buildUserSettingsView(lv_obj_t* parent) {
     lv_obj_set_flex_flow(row1, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(row1, LV_FLEX_ALIGN_SPACE_AROUND, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
-    lv_obj_t* btn_tare = lv_btn_create(row1);
-    lv_obj_set_size(btn_tare, LV_PCT(40), 70);
-    lv_obj_set_style_bg_color(btn_tare, lv_color_hex(0x2563EB), 0);
-    lv_obj_add_event_cb(btn_tare, btn_tare_event_cb, LV_EVENT_CLICKED, this);
-    lv_obj_t* lbl_tare = lv_label_create(btn_tare);
-    lv_obj_set_style_text_font(lbl_tare, &ui_font_chs_16, 0);
-    lv_label_set_text(lbl_tare, "全局置零");
-    lv_obj_center(lbl_tare);
+    settings_tare_btn = lv_btn_create(row1);
+    lv_obj_set_size(settings_tare_btn, LV_PCT(40), 70);
+    lv_obj_set_style_bg_color(settings_tare_btn, lv_color_hex(0x2563EB), 0);
+    lv_obj_add_event_cb(settings_tare_btn, btn_tare_event_cb, LV_EVENT_ALL, this);
+    settings_tare_lbl = lv_label_create(settings_tare_btn);
+    lv_obj_set_style_text_font(settings_tare_lbl, &ui_font_chs_16, 0);
+    lv_label_set_text(settings_tare_lbl, "全局置零");
+    lv_obj_center(settings_tare_lbl);
 
     lv_obj_t* btn_clear = lv_btn_create(row1);
     lv_obj_set_size(btn_clear, LV_PCT(40), 70);
@@ -560,6 +580,40 @@ void UIManager::updateDashboard(const SystemContext* ctx) {
     updateScanModal(ctx);
     char buf[64];
     
+    // 0. 序列化操作 (置零) UI 锁定与进度反馈
+    if (_isFirstUpdate || ctx->ui.isTareRunning != _lastSnapshot.isTareRunning || 
+        ctx->ui.tareProgress != _lastSnapshot.tareProgress) {
+        
+        bool busy = ctx->ui.isTareRunning;
+        int progress = ctx->ui.tareProgress;
+
+        if (dashboard_tare_btn && dashboard_tare_lbl) {
+            if (busy) {
+                lv_obj_clear_flag(dashboard_tare_btn, LV_OBJ_FLAG_CLICKABLE);
+                lv_obj_set_style_bg_color(dashboard_tare_btn, lv_color_hex(0x92400E), 0); // 深琥珀色
+                lv_label_set_text_fmt(dashboard_tare_lbl, "%d%%", progress);
+            } else {
+                lv_obj_add_flag(dashboard_tare_btn, LV_OBJ_FLAG_CLICKABLE);
+                lv_obj_set_style_bg_color(dashboard_tare_btn, lv_color_hex(0x475569), 0);
+                lv_label_set_text(dashboard_tare_lbl, "置零");
+                lv_obj_set_style_text_color(dashboard_tare_lbl, lv_color_white(), 0);
+            }
+        }
+
+        if (settings_tare_btn && settings_tare_lbl) {
+            if (busy) {
+                lv_obj_clear_flag(settings_tare_btn, LV_OBJ_FLAG_CLICKABLE);
+                lv_obj_set_style_bg_color(settings_tare_btn, lv_color_hex(0x92400E), 0);
+                lv_label_set_text_fmt(settings_tare_lbl, "置零中... %d%%", progress);
+            } else {
+                lv_obj_add_flag(settings_tare_btn, LV_OBJ_FLAG_CLICKABLE);
+                lv_obj_set_style_bg_color(settings_tare_btn, lv_color_hex(0x2563EB), 0);
+                lv_label_set_text(settings_tare_lbl, "全局置零");
+                lv_obj_set_style_text_color(settings_tare_lbl, lv_color_white(), 0);
+            }
+        }
+    }
+
     // 1. 状态栏更新 (仅在状态或模式变化时更新)
     bool modeChanged = (_isFirstUpdate || ctx->ui.curMode != _lastSnapshot.curMode);
     // 简化逻辑：状态由 ctx->prog 控制，Snapshot 暂未包含全部，通过 static lastStatus 优化高频部分

@@ -49,6 +49,11 @@ private:
     SystemContext      _ctx;
     float              _accumulatedWeight   = 0.0f;
     bool               _isProductionActive  = true;
+    
+    // 全局置零进度跟踪
+    bool               _isTareRunning       = false;
+    int                _tareProgress        = 0;
+    
     Preferences        _nvs;
 
     // --- FreeRTOS 同步原语 (Phase 4: 优化锁) ---
