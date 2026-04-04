@@ -150,6 +150,18 @@ void AppDispatcher::uiLoop() {
         if (_currentApp) {
             _ctx->ui.isTareRunning = _currentApp->hasUIProgress();
             _ctx->ui.tareProgress  = _currentApp->getUIProgress();
+
+            // 专门处理扫描数据的同步 (从 App 层拉取到 UI 快照层)
+            if (_currentMode == MODE_DIAG_SCAN) {
+                AppScan* scanApp = static_cast<AppScan*>(_currentApp);
+                _ctx->ui.scanCycle = scanApp->getScanCycle();
+                _ctx->ui.scanProgress = scanApp->getScanProgress();
+                for (int c = 0; c < 5; c++) {
+                    for (int i = 1; i <= 20; i++) {
+                        _ctx->ui.scanResults[c][i] = scanApp->getScanResult(c, i);
+                    }
+                }
+            }
         }
 
         _ui->updateDashboard(_ctx);

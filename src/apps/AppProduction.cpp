@@ -20,8 +20,9 @@ void AppProduction::onEnter() {
 }
 
 void AppProduction::onLoop() {
-    _pollMgr->process();
+    handlePolling();
 
+    // 核心组合引擎逻辑由独立节拍控制
     bool  canCalculate = true; 
     float currentMin, currentMax;
     SystemStatus currentStatus;
@@ -65,22 +66,20 @@ void AppProduction::onLoop() {
                 }
                 xSemaphoreGive(_mutex);
 
-                Serial.printf("[AUTO] Combined: %.1f g, Mask: 0x%08X\n", res.totalWeight, _ctx->prog.idMask);
+                Serial.printf("[AppProduction] Combined: %.1f g, Mask: 0x%08X\n", res.totalWeight, _ctx->prog.idMask);
 
-                // 执行下料指令
                 for (int id : mappedIds) _rs485->syncWrite(id, 0x0100, 5);
                 vTaskDelay(pdMS_TO_TICKS(DISCHARGE_SETTLE_MS));
                 for (int id : mappedIds) _pollMgr->setNodeStatus(id, NODE_DIRTY);
 
                 xSemaphoreTake(_mutex, portMAX_DELAY);
                 _ctx->config.accumulatedWeight += res.totalWeight;
-                saveParams(); // 持久化累计重量
+                saveParams(); 
                 
                 _ctx->prog.sysStatus            = SYS_TRANSFER_B1;
                 _ctx->prog.idMask               = 0;
                 xSemaphoreGive(_mutex);
 
-                // 输送带动作
                 _conveyor->collectFromUnits();
                 vTaskDelay(pdMS_TO_TICKS(BELT_COLLECT_PERIOD_MS));
                 
@@ -96,6 +95,18 @@ void AppProduction::onLoop() {
                 xSemaphoreGive(_mutex);
             }
         }
+    }
+}
+
+void AppProduction::handlePolling() {
+    uint8_t nextId = _currentPollId;
+    for (int i = 0; i < 20; i++) {
+        nextId = (nextId % 20) + 1;
+        if (_pollMgr->isWhitelisted(nextId)) break;
+    }
+    
+    if (_pollMgr->asyncUpdateNode(nextId)) {
+        _currentPollId = nextId;
     }
 }
 

@@ -42,7 +42,9 @@ private:
 
     Preferences         _nvs;
     unsigned long       _lastCalcTime = 0;
+    uint8_t             _currentPollId = 1;
 
+    void handlePolling();
     void loadParams();
     void saveParams();
 };

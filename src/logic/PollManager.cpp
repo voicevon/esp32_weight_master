@@ -11,7 +11,7 @@ union FloatConverter {
 // 静态成员定义
 PollManager* PollManager::_instance = nullptr;
 
-PollManager::PollManager(ModbusMaster* master) : _mb(master), _curMode(MODE_IDLE) {
+PollManager::PollManager(ModbusMaster* master) : _mb(master) {
     _instance = this;
 }
 
@@ -19,129 +19,42 @@ void PollManager::begin() {
     loadWhitelist();
 }
 
-void PollManager::setMode(OperationMode mode) {
-    if (_curMode == mode) return;
-    _curMode = mode;
-    
-    if (mode == MODE_DIAG_SCAN) {
-        _scanProgress = 1;
-        _scanCycle = 0;
-        memset(_scanHistory, 0, sizeof(_scanHistory));
-        Serial.println("[POLL] Scan Strategy Started (Cycles 0-4)");
-    }
-}
-
-
 void PollManager::process() {
-    // 核心解耦点：只有当驱动层真正空闲时，业务调度层才下发任务
-    if (_mb->getStatus() == ModbusMaster::ST_WAITING) return;
-
-    switch (_curMode) {
-        case MODE_PRODUCTION:
-            handleProductionPoll();
-            break;
-            
-        case MODE_DIAG_SCAN:
-            handleScanPoll();
-            break;
-            
-        case MODE_SERVO_TEST:
-        case MODE_SEQUENTIAL_CTRL:
-            // 独占总线模式：静默背景轮询，仅响应 AppController 的主动写指令
-            break;
-            
-        default:
-            break;
-    }
+    // PollManager 现在仅负责基础的总线维护（如果有需要）
+    // 目前 process() 可以保持空，业务由 App 驱动
 }
 
-void PollManager::handleProductionPoll() {
-    // 10ms 强制总线间隙控制 (核心稳定性证据：为 Slave 物理层切换预留稳定时间)
-    if (millis() - _lastRequestTime < 10) return;
-
-    // 性能诊断：起始点记录
-    if (_processedInCycle == 0) {
-        _lastCycleStartTime = millis();
-        _whitelistedInCycle = 0;
-        for (int i = 1; i <= 20; i++) if (_nodes[i].whitelisted) _whitelistedInCycle++;
-    }
-
-    // 白名单过滤策略：寻找下一个在白名单的 ID
-    uint8_t nextId = _currentPollId;
-    for (int i = 0; i < 20; i++) {
-        nextId = (nextId % 20) + 1;
-        if (_nodes[nextId].whitelisted) break;
-    }
-    _currentPollId = nextId;
-
-    // 下发原子读取指令
-    bool ok = _mb->asyncRead(_currentPollId, 0x0000, 8, onPollComplete, _nodes[_currentPollId].registers);
-    if (ok) {
-        _lastRequestTime = millis();
-        _processedInCycle++;
-        if (_processedInCycle >= _whitelistedInCycle) {
-            unsigned long duration = millis() - _lastCycleStartTime;
-            int onlineCount = 0;
-            for (int i = 1; i <= 20; i++) if (_nodes[i].online && _nodes[i].whitelisted) onlineCount++;
-            
-            _processedInCycle = 0; 
-        }
-    }
-
-}
-
-void PollManager::handleScanPoll() {
-    if (millis() - _lastRequestTime < 10) return;
+bool PollManager::asyncUpdateNode(int id) {
+    if (id < 1 || id > 20) return false;
     
-    // 全量遍历策略：不看白名单，强制遍历 1-20
-    if (_mb->asyncRead(_scanProgress, 0x0000, 8, onPollComplete, _nodes[_scanProgress].registers)) {
+    // 基础的频率控制 (10ms 帧间隙)
+    if (millis() - _lastRequestTime < 10) return false;
+
+    if (_mb->asyncRead(id, 0x0000, 8, onPollComplete, _nodes[id].registers)) {
         _lastRequestTime = millis();
+        return true;
     }
+    return false;
 }
 
 bool PollManager::onPollComplete(Modbus::ResultCode event, uint16_t transactionId, void* data) {
-    // 使用 static _instance 指针访问实例，不再依赖全局变量名
     if (!_instance) return false;
     PollManager& pollManager = *_instance;
     
     uint8_t id = (uint8_t)transactionId;
+    if (id < 1 || id > 20) return false;
 
     if (event == Modbus::EX_SUCCESS) {
         pollManager._nodes[id].online = true;
         pollManager._nodes[id].failCounter = 0;
 
-        // 核心重构：data 指针现在由业务层(PollManager)显式提供，指向 NodeData.registers
         uint16_t* regs = (uint16_t*)data; 
-        if (regs == nullptr) return false;
-
-        // 根据寄存器回传地址反推 ID (更严谨的做法)
-        // 但此处我们依然可以信任 transactionId 或全局单例，
-        // 直到我们将 PollManager 改为非单例架构。
-        pollManager.updateNodeFromRegisters(id, regs);
-
-        if (pollManager._curMode == MODE_DIAG_SCAN) {
-            pollManager._scanHistory[pollManager._scanCycle][id] = true;
+        if (regs != nullptr) {
+            pollManager.updateNodeFromRegisters(id, regs);
         }
     } else {
         pollManager._nodes[id].online = false;
         pollManager._nodes[id].failCounter++;
-        if (pollManager._curMode == MODE_DIAG_SCAN) {
-            pollManager._scanHistory[pollManager._scanCycle][id] = false;
-        }
-    }
-
-    // 扫描模式下的进度推进
-    if (pollManager._curMode == MODE_DIAG_SCAN) {
-        pollManager._scanProgress++;
-        if (pollManager._scanProgress > 20) {
-            pollManager._scanProgress = 1;
-            pollManager._scanCycle++;
-            if (pollManager._scanCycle >= 5) {
-                // 5 轮扫完，生成最终白名单并退出扫描模式
-                pollManager.saveWhitelist(); // 内部自动从 scanHistory 生成
-                if (pollManager._bus) pollManager._bus->updateOperationMode(MODE_CONFIGURATION);
-            }
-        }
     }
 
     return true; 
@@ -149,33 +62,28 @@ bool PollManager::onPollComplete(Modbus::ResultCode event, uint16_t transactionI
 
 void PollManager::updateNodeFromRegisters(int id, uint16_t* regs) {
     FloatConverter conv;
-    conv.r[1] = regs[0]; // High Word (from REG_WEIGHT_H)
-    conv.r[0] = regs[1]; // Low Word (from REG_WEIGHT_L)
+    conv.r[1] = regs[0]; // High Word
+    conv.r[0] = regs[1]; // Low Word
     _nodes[id].weight = conv.f;
 
     uint16_t statusReg = regs[2];
     _nodes[id].stable = (statusReg >> 8) & 0x01;
     _nodes[id].doorPhase = (statusReg & 0xFF);
     
-    uint16_t currentDataId = regs[5];
-    _nodes[id].lastDataId = currentDataId;
+    _nodes[id].lastDataId = regs[5];
 
-    // 生产业务 FSM 迁移至此
-    if (_curMode == MODE_PRODUCTION) {
-        if (_nodes[id].status == NODE_DIRTY) {
-            _nodes[id].status = NODE_REFRESHING;
+    // 状态机精简：不再在这里判断 PRODUCTION 逻辑
+    if (_nodes[id].status == NODE_DIRTY) {
+        _nodes[id].status = NODE_REFRESHING;
+    } else {
+        if (_nodes[id].doorPhase == 0 && _nodes[id].stable) {
+            _nodes[id].status = NODE_STABLE;
         } else {
-            bool isDoorClosed = (_nodes[id].doorPhase == 0);
-            if (isDoorClosed && _nodes[id].stable) {
-                _nodes[id].status = NODE_STABLE;
-            } else {
-                _nodes[id].status = NODE_REFRESHING;
-            }
+            _nodes[id].status = NODE_REFRESHING;
         }
     }
 }
 
-// 数据访问接口 (Read-only)
 float PollManager::getWeight(int id) const { return (id >= 1 && id <= 20) ? _nodes[id].weight : 0.0f; }
 bool PollManager::isStable(int id) const { return (id >= 1 && id <= 20) ? _nodes[id].stable : false; }
 uint8_t PollManager::getDoorPhase(int id) const { return (id >= 1 && id <= 20) ? _nodes[id].doorPhase : 0; }
@@ -192,7 +100,6 @@ int PollManager::getUnstableCount() const {
 }
 
 void PollManager::fillUISnapshot(UISnapshot& snapshot) const {
-    snapshot.curMode = _curMode;
     float sSum = 0, uSum = 0;
     for (int i = 1; i <= 20; i++) {
         snapshot.currentWeights[i]   = _nodes[i].weight;
@@ -200,9 +107,8 @@ void PollManager::fillUISnapshot(UISnapshot& snapshot) const {
         snapshot.onlineNodes[i]      = _nodes[i].online;
         snapshot.whitelistedNodes[i] = _nodes[i].whitelisted;
         
-        // 3色状态映射：1=开(绿), 0=关(紫), -1=故障(红)
         if (!_nodes[i].online) {
-            snapshot.servoRealStates[i] = -1; // 离线/故障
+            snapshot.servoRealStates[i] = -1; 
         } else {
             snapshot.servoRealStates[i] = _nodes[i].servoOpen ? 1 : 0;
         }
@@ -215,14 +121,7 @@ void PollManager::fillUISnapshot(UISnapshot& snapshot) const {
     snapshot.stableWeightSum = sSum;
     snapshot.unstableWeightSum = uSum;
 
-    // 填充扫描与诊断数据 (New phase 4)
-    snapshot.scanProgress = _scanProgress;
-    snapshot.scanCycle = _scanCycle;
-    for(int c=0; c<5; c++) {
-        for(int i=1; i<=20; i++) {
-            snapshot.scanResults[c][i] = _scanHistory[c][i];
-        }
-    }
+    // 扫描数据现在由 AppDispatcher 从 AppScan 获取，这里不再负责填充相关字段
 }
 
 uint32_t PollManager::getWhitelistMask() const {
@@ -234,19 +133,12 @@ uint32_t PollManager::getWhitelistMask() const {
 void PollManager::saveWhitelist() {
     Preferences prefs;
     prefs.begin("modbus", false);
-    int foundCount = 0;
     for (int i = 1; i <= 20; i++) {
-        bool anyPass = false;
-        for (int c = 0; c < 5; c++) if (_scanHistory[c][i]) { anyPass = true; break; }
-        _nodes[i].whitelisted = anyPass;
-        if (anyPass) foundCount++;
-
         char key[8];
         snprintf(key, sizeof(key), "wl%d", i);
-        prefs.putBool(key, anyPass);
+        prefs.putBool(key, _nodes[i].whitelisted);
     }
     prefs.end();
-    Serial.printf("[POLL] Whitelist Saved. Found %d nodes.\n", foundCount);
 }
 
 void PollManager::loadWhitelist() {

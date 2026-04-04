@@ -40,7 +40,7 @@ SemaphoreHandle_t  mutexCtx;
 
 // --- 具体应用实例 ---
 AppProduction      appProduction(&sysCtx, &pollManager, &rs485, &engine, &conveyor, nullptr);
-AppScan            appScan(&sysCtx, &pollManager, nullptr);
+AppScan            appScan(&sysCtx, &pollManager, &rs485, nullptr);
 AppDiagPulse       appDiagPulse(&sysCtx, &rs485, nullptr);
 AppSequentialCtrl  appSeqCtrl(&sysCtx, &rs485, &pollManager, nullptr);
 
@@ -62,7 +62,7 @@ void setup() {
 
     // 重新注入互斥锁与状态上下文
     appProduction = AppProduction(&sysCtx, &pollManager, &rs485, &engine, &conveyor, mutexCtx);
-    appScan       = AppScan(&sysCtx, &pollManager, mutexCtx);
+    appScan       = AppScan(&sysCtx, &pollManager, &rs485, mutexCtx);
     appDiagPulse  = AppDiagPulse(&sysCtx, &rs485, mutexCtx);
     appSeqCtrl    = AppSequentialCtrl(&sysCtx, &rs485, &pollManager, mutexCtx);
 

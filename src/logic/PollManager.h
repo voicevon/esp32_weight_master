@@ -17,11 +17,9 @@ public:
     void begin();
     void setCommandBus(ICommandBus* bus) { _bus = bus; }
 
-    // 核心调度接口：在业务循环中非阻塞调用
+    // 核心接口：由外部 App 调用
     void process(); 
-    void setMode(OperationMode mode);
-    OperationMode getMode() const { return _curMode; }
-    
+    bool asyncUpdateNode(int id);
     
     // 数据查询接口 (UI/业务逻辑调用)
     float getWeight(int id) const;
@@ -36,13 +34,8 @@ public:
     // 聚合统计
     int getUnstableCount() const;
     uint32_t getWhitelistMask() const;
-    int getScanProgress() const { return _scanProgress; }
-    int getScanCycle() const { return _scanCycle; }
-    bool getScanHistory(int cycle, int id) const { 
-        return (cycle >= 0 && cycle < 5 && id >= 1 && id <= 20) ? _scanHistory[cycle][id] : false; 
-    }
 
-    // 批量同步接口 (Phase 4 性能优化: 减少 API 调用开销)
+    // 批量同步接口 (Phase 4 性能优化)
     void fillUISnapshot(UISnapshot& snapshot) const;
 
     // 白名单持久化
@@ -51,41 +44,26 @@ public:
 
 private:
     ModbusMaster* _mb;
-    OperationMode _curMode = MODE_IDLE;
 
     // 节点数据缓存 (1-20)
     struct NodeData {
-        uint16_t registers[8];   // [新] 显式的寄存器落地缓冲区，确保异步安全
+        uint16_t registers[8];   
         float weight = 0.0f;
         bool stable = false;
         uint8_t doorPhase = 0;
         bool online = false;
         bool whitelisted = true;
-        bool servoOpen = false; // 用户测试指令下的开合状态
+        bool servoOpen = false; 
         uint8_t failCounter = 0;
         uint16_t lastDataId = 0;
         NodeStatus status = NODE_DIRTY;
     } _nodes[21];
     unsigned long _lastRequestTime = 0;
 
-    // 扫描状态机变量
-    int _scanProgress = 1;
-    int _scanCycle = 0;
-    bool _scanHistory[5][21]; // 5 轮扫描的生还记录
-
-    // 轮询 ID 管理
-    uint8_t _currentPollId = 1;
-    unsigned long _lastCycleStartTime = 0;
-    int _whitelistedInCycle = 0;
-    int _processedInCycle = 0;
-
-    // static 回调实例指针（替代 extern 全局单例依赖）
+    // static 回调实例指针
     static PollManager* _instance;
 
-    // 内部帮助函数
     ICommandBus* _bus = nullptr;
-    void handleProductionPoll();
-    void handleScanPoll();
     void updateNodeFromRegisters(int id, uint16_t* regs);
     static bool onPollComplete(Modbus::ResultCode event, uint16_t transactionId, void* data);
 };
