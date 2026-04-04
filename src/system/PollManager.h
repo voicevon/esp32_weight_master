@@ -63,6 +63,7 @@ private:
         uint16_t lastDataId = 0;
         NodeStatus status = NODE_DIRTY;
     } _nodes[21];
+    unsigned long _lastRequestTime = 0;
 
     // 扫描状态机变量
     int _scanProgress = 1;

@@ -226,6 +226,12 @@ void AppController::controlLoop() {
                         xSemaphoreTake(_mutexProduction, portMAX_DELAY);
                         _accumulatedWeight            += res.totalWeight;
                         _ctx.config.accumulatedWeight  = _accumulatedWeight;
+                        
+                        // Persistence: Save to NVS immediately
+                        _nvs.begin("production", false);
+                        _nvs.putFloat("accu", _accumulatedWeight);
+                        _nvs.end();
+
                         _ctx.prog.status               = SYS_TRANSFER_B1;
                         _ctx.prog.selectionMask        = 0;
                         xSemaphoreGive(_mutexProduction);

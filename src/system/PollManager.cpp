@@ -52,6 +52,9 @@ void PollManager::process() {
 }
 
 void PollManager::handleProductionPoll() {
+    // 10ms 强制总线间隙控制 (核心稳定性证据：为 Slave 物理层切换预留稳定时间)
+    if (millis() - _lastRequestTime < 10) return;
+
     // 性能诊断：起始点记录
     if (_processedInCycle == 0) {
         _lastCycleStartTime = millis();
@@ -70,18 +73,28 @@ void PollManager::handleProductionPoll() {
     // 下发原子读取指令
     bool ok = _mb->asyncRead(_currentPollId, 0x0000, 8, onPollComplete, _nodes[_currentPollId].registers);
     if (ok) {
+        _lastRequestTime = millis();
         _processedInCycle++;
         if (_processedInCycle >= _whitelistedInCycle) {
             unsigned long duration = millis() - _lastCycleStartTime;
-            Serial.printf("[PERF] Poll Cycle: %lu ms (Nodes: %d)\n", duration, _whitelistedInCycle);
-            _processedInCycle = 0; // 重置下一周期
+            int onlineCount = 0;
+            for (int i = 1; i <= 20; i++) if (_nodes[i].online && _nodes[i].whitelisted) onlineCount++;
+            
+            Serial.printf("[POLL_SUMMARY] Cycle: %lu ms, Whitelisted: %d, Online: %d, Unstable: %d\n", 
+                          duration, _whitelistedInCycle, onlineCount, getUnstableCount());
+            _processedInCycle = 0; 
         }
     }
+
 }
 
 void PollManager::handleScanPoll() {
+    if (millis() - _lastRequestTime < 10) return;
+    
     // 全量遍历策略：不看白名单，强制遍历 1-20
-    _mb->asyncRead(_scanProgress, 0x0000, 8, onPollComplete, _nodes[_scanProgress].registers);
+    if (_mb->asyncRead(_scanProgress, 0x0000, 8, onPollComplete, _nodes[_scanProgress].registers)) {
+        _lastRequestTime = millis();
+    }
 }
 
 bool PollManager::onPollComplete(Modbus::ResultCode event, uint16_t transactionId, void* data) {
@@ -89,7 +102,7 @@ bool PollManager::onPollComplete(Modbus::ResultCode event, uint16_t transactionI
     if (!_instance) return false;
     PollManager& pollManager = *_instance;
     
-    uint8_t id = pollManager._curMode == MODE_DIAG_SCAN ? pollManager._scanProgress : pollManager._currentPollId;
+    uint8_t id = (uint8_t)transactionId;
 
     if (event == Modbus::EX_SUCCESS) {
         pollManager._nodes[id].online = true;
@@ -134,8 +147,8 @@ bool PollManager::onPollComplete(Modbus::ResultCode event, uint16_t transactionI
 
 void PollManager::updateNodeFromRegisters(int id, uint16_t* regs) {
     FloatConverter conv;
-    conv.r[0] = regs[0];
-    conv.r[1] = regs[1];
+    conv.r[1] = regs[0]; // High Word (from REG_WEIGHT_H)
+    conv.r[0] = regs[1]; // Low Word (from REG_WEIGHT_L)
     _nodes[id].weight = conv.f;
 
     uint16_t statusReg = regs[2];
@@ -177,12 +190,20 @@ int PollManager::getUnstableCount() const {
 
 void PollManager::fillUISnapshot(UISnapshot& snapshot) const {
     snapshot.curMode = _curMode;
+    float sSum = 0, uSum = 0;
     for (int i = 1; i <= 20; i++) {
         snapshot.currentWeights[i]   = _nodes[i].weight;
         snapshot.stableNodes[i]      = _nodes[i].stable;
         snapshot.onlineNodes[i]      = _nodes[i].online;
         snapshot.whitelistedNodes[i] = _nodes[i].whitelisted;
+        
+        if (_nodes[i].online && _nodes[i].whitelisted) {
+            if (_nodes[i].stable) sSum += _nodes[i].weight;
+            else uSum += _nodes[i].weight;
+        }
     }
+    snapshot.stableWeightSum = sSum;
+    snapshot.unstableWeightSum = uSum;
 }
 
 uint32_t PollManager::getWhitelistMask() const {

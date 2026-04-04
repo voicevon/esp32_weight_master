@@ -92,6 +92,8 @@ struct UISnapshot {
     bool          stableNodes[21];
     bool          onlineNodes[21];
     bool          whitelistedNodes[21];
+    float         stableWeightSum;    // 已稳总重 (白名单内在线稳节点)
+    float         unstableWeightSum;  // 未稳总值 (白名单内在线非稳节点)
 };
 
 #endif

@@ -142,11 +142,24 @@ void UIManager::buildDashboardView(lv_obj_t* parent) {
     lv_obj_set_style_bg_color(center_area, lv_color_hex(0x0F172A), 0);
     lv_obj_set_style_border_width(center_area, 0, 0);
 
-    huge_combo_label = lv_label_create(center_area);
-    lv_obj_set_style_text_font(huge_combo_label, &lv_font_montserrat_48, 0);
-    lv_obj_set_style_text_color(huge_combo_label, lv_color_hex(0xFBBF24), 0);
-    lv_label_set_text(huge_combo_label, "0.0 g");
-    lv_obj_align(huge_combo_label, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_flex_flow(center_area, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(center_area, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(center_area, 20, 0);
+
+    label_stable_total = lv_label_create(center_area);
+    lv_obj_set_style_text_font(label_stable_total, &lv_font_montserrat_48, 0);
+    lv_obj_set_style_text_color(label_stable_total, lv_color_hex(0xFBBF24), 0);
+    lv_label_set_text(label_stable_total, "0.0 g");
+
+    label_unstable_total = lv_label_create(center_area);
+    lv_obj_set_style_text_font(label_unstable_total, &lv_font_montserrat_26, 0);
+    lv_obj_set_style_text_color(label_unstable_total, lv_color_hex(0xF59E0B), 0);
+    lv_label_set_text(label_unstable_total, "");
+
+    label_grand_total = lv_label_create(center_area);
+    lv_obj_set_style_text_font(label_grand_total, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(label_grand_total, lv_color_hex(0x94A3B8), 0);
+    lv_label_set_text(label_grand_total, "");
 
     lv_obj_t* graph_container = lv_obj_create(parent);
     lv_obj_set_size(graph_container, 800, 200);
@@ -169,7 +182,7 @@ void UIManager::buildDashboardView(lv_obj_t* parent) {
         lv_obj_t* bar = lv_bar_create(col);
         lv_obj_set_size(bar, 34, 120);
         lv_obj_align(bar, LV_ALIGN_TOP_MID, 0, 0);
-        lv_bar_set_range(bar, 0, 500);
+        lv_bar_set_range(bar, 0, 150);
         lv_bar_set_value(bar, 0, LV_ANIM_OFF);
         lv_obj_set_style_bg_color(bar, lv_color_hex(0x334115), LV_PART_INDICATOR);
 
@@ -522,11 +535,28 @@ void UIManager::updateDashboard(const SystemContext* ctx) {
         lv_label_set_text(target_label, buf);
     }
 
-    static float lastBatch = -1.0f;
-    if (_isFirstUpdate || ctx->prog.lastBatchWeight != lastBatch) {
-        lastBatch = ctx->prog.lastBatchWeight;
-        snprintf(buf, sizeof(buf), "%.1f g", lastBatch);
-        lv_label_set_text(huge_combo_label, buf);
+    // 3. 核心三段式重量显示
+    static float lastStable = -1.0f, lastUnstable = -1.0f;
+    if (_isFirstUpdate || ctx->ui.stableWeightSum != lastStable || ctx->ui.unstableWeightSum != lastUnstable) {
+        lastStable = ctx->ui.stableWeightSum;
+        lastUnstable = ctx->ui.unstableWeightSum;
+        
+        // 已稳总重
+        snprintf(buf, sizeof(buf), "%.1f g", lastStable);
+        lv_label_set_text(label_stable_total, buf);
+        
+        // 未稳总重
+        if (lastUnstable > 0.1f) {
+            snprintf(buf, sizeof(buf), "+ %.1f g", lastUnstable);
+            lv_label_set_text(label_unstable_total, buf);
+            lv_obj_clear_flag(label_unstable_total, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_add_flag(label_unstable_total, LV_OBJ_FLAG_HIDDEN);
+        }
+        
+        // 合计
+        snprintf(buf, sizeof(buf), "(Total: %.1fg)", lastStable + lastUnstable);
+        lv_label_set_text(label_grand_total, buf);
     }
 
     // 3. 核心优化：20 个节点的 Bar Graph (Dirty Check)
@@ -558,7 +588,7 @@ void UIManager::updateDashboard(const SystemContext* ctx) {
             uint32_t color = 0x475569; // 默认灰色
             
             if (!ctx->ui.onlineNodes[i]) {
-                color = 0xEF4444; // 红色：超时/掉线
+                color = 0x334155; // 深蓝灰：离线/非工作
             } else if (selectionMask & (1 << (i - 1))) {
                 color = 0x22C55E; // 亮绿色：正在下料
             } else if (ctx->ui.stableNodes[i]) {

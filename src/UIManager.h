@@ -41,6 +41,9 @@ private:
     lv_obj_t* accu_weight_label = nullptr;
     lv_obj_t* target_label = nullptr;
     lv_obj_t* huge_combo_label = nullptr;
+    lv_obj_t* label_stable_total = nullptr;
+    lv_obj_t* label_unstable_total = nullptr;
+    lv_obj_t* label_grand_total = nullptr;
     lv_obj_t* spinbox_min = nullptr;
     lv_obj_t* spinbox_max = nullptr;
     lv_obj_t* node_bars[21];

@@ -81,7 +81,7 @@ bool ModbusMaster::asyncRead(uint8_t id, uint16_t addr, uint16_t count, cbTransa
         return false;
     }
 
-    _lastTid++; 
+    _lastTid = id; 
     _pendingCb   = cb;
     _pendingData = (void*)destBuffer;
     _status      = ST_WAITING;
@@ -145,9 +145,12 @@ void ModbusMaster::modbusTask(void* param) {
     while (true) {
         if (instance->_status == ST_WAITING) {
             if (Serial1.available()) {
+                unsigned long firstByteTime = millis();
+                unsigned long latency = firstByteTime - instance->_lastPollTime;
+                
                 unsigned long lastByteTime = millis();
                 int idx = 0;
-                while (millis() - lastByteTime < 10) { // 3.5 字符时间判定 (9600 约 3.6ms, 10ms 足够)
+                while (millis() - lastByteTime < 15) { // 稍微放宽 3.5T 判定到 15ms
                     if (Serial1.available()) {
                         instance->_rxBuf[idx++] = Serial1.read();
                         lastByteTime = millis();
@@ -156,6 +159,8 @@ void ModbusMaster::modbusTask(void* param) {
                     vTaskDelay(1);
                 }
                 
+                unsigned long totalDuration = millis() - instance->_lastPollTime;
+
                 // 解析报文
                 if (idx >= 5) { // 最小报文长度: ID + FN + LEN + DATA + CRC16(2)
                     uint16_t calcCrc = instance->calculateCRC(instance->_rxBuf, idx - 2);
@@ -169,30 +174,41 @@ void ModbusMaster::modbusTask(void* param) {
                             for (int i = 0; i < byteCount / 2; i++) {
                                 dest[i] = (instance->_rxBuf[3 + i * 2] << 8) | instance->_rxBuf[4 + i * 2];
                             }
-                            instance->_status = ST_SUCCESS;
                             if (instance->_pendingCb) {
                                 instance->_pendingCb(Modbus::EX_SUCCESS, instance->_lastTid, instance->_pendingData);
                                 instance->_pendingCb = nullptr;
                             }
+                            instance->_status = ST_SUCCESS;
+                            Serial.printf("[MB_DIAG] SUCCESS ID:%d, Latency:%lu ms, Total:%lu ms\n", 
+                                          instance->_lastTid, latency, totalDuration);
                         } else if (fn == 0x06) { // 写回复 (Echo)
                             instance->_status = ST_SUCCESS;
+                            Serial.printf("[MB_DIAG] WRITE SUCCESS ID:%d, Latency:%lu ms\n", 
+                                          instance->_lastTid, latency);
                         }
                     } else {
                         instance->_status = ST_ERROR;
-                        Serial.println("[MB_MASTER] CRC Error");
+                        Serial.printf("[MB_DIAG] CRC ERROR ID:%d, Latency:%lu ms, Recv:%d bytes\n", 
+                                      instance->_lastTid, latency, idx);
                     }
+                } else {
+                    Serial.printf("[MB_DIAG] SHORT FRAME ID:%d, Latency:%lu ms, Recv:%d bytes\n", 
+                                  instance->_lastTid, latency, idx);
                 }
-            } else if (millis() - instance->_lastPollTime > 1000) {
-                instance->_status = ST_TIMEOUT;
-                instance->_packetsDropped++;
+            } else if (millis() - instance->_lastPollTime > 2000) { // 放宽到 2s
                 if (instance->_pendingCb) {
                     instance->_pendingCb(Modbus::EX_TIMEOUT, instance->_lastTid, instance->_pendingData);
                     instance->_pendingCb = nullptr;
                 }
+                instance->_status = ST_TIMEOUT;
+                instance->_packetsDropped++;
+                Serial.printf("[MB_DIAG] TIMEOUT ID:%d after %lu ms\n", 
+                              instance->_lastTid, millis() - instance->_lastPollTime);
             }
         }
         vTaskDelay(pdMS_TO_TICKS(5));
     }
+
 }
 
 // 原始字节诊断
