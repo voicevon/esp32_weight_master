@@ -75,16 +75,6 @@ struct WSProductionState {
     uint32_t     idMask;          // 下料掩码
 };
 
-/**
- * @brief 诊断与全系统扫描数据
- */
-struct DiagContext {
-    int     scanProgress;      // 0-20
-    int     currentScanCycle;  // 0-4
-    bool    scanResults[5][21]; // 1-based id index -> size 21
-    uint8_t diagLastSent;
-    char    diagRxHex[128];
-};
 
 /**
  * @brief UI 渲染快照 (无锁副本，由 uiLoop 填充)
@@ -102,6 +92,12 @@ struct UISnapshot {
     // 序列控制进度 (用于 UI 锁定与反馈)
     bool          isTareRunning;      // 是否正在执行全局置零
     int           tareProgress;       // 置零进度 (0-100)
+
+    // 扫描与诊断同步 (由 PollManager 填充)
+    int           scanProgress;
+    int           scanCycle;
+    bool          scanResults[5][21];
+    char          diagRxHex[128];
 };
 
 #endif

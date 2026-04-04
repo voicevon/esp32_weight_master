@@ -1,17 +1,32 @@
-#include "ProductionHandler.h"
+#include "apps/AppProduction.h"
 #include <Arduino.h>
-#include <vector>
-#include "system/SystemTypes.h"
+#include "system/SystemConfig.h"
+#include "system/SystemContext.h"
+#include "logic/PollManager.h"
+#include "drivers/ModbusMaster.h"
+#include "logic/CombinationEngine.h"
+#include "logic/ConveyorController.h"
 
-void ProductionHandler::onLoop() {
+AppProduction::AppProduction(SystemContext* ctx, PollManager* pollMgr, ModbusMaster* rs485,
+                             CombinationEngine* engine, ConveyorController* conveyor,
+                             SemaphoreHandle_t mutex)
+    : _ctx(ctx), _pollMgr(pollMgr), _rs485(rs485), _engine(engine), _conveyor(conveyor), _mutex(mutex)
+{
+}
+
+void AppProduction::onEnter() {
+    loadParams();
+    Serial.println("[AppProduction] Production Mode Entered.");
+}
+
+void AppProduction::onLoop() {
     _pollMgr->process();
 
-    bool  canCalculate;
+    bool  canCalculate = true; 
     float currentMin, currentMax;
     SystemStatus currentStatus;
 
     xSemaphoreTake(_mutex, portMAX_DELAY);
-    canCalculate  = true; // 简单化处理，Handler 只在开启时 loop
     currentMin    = _ctx->config.targetMin;
     currentMax    = _ctx->config.targetMax;
     currentStatus = _ctx->prog.sysStatus;
@@ -24,7 +39,7 @@ void ProductionHandler::onLoop() {
 
             std::vector<float> activeWeights;
             std::vector<int>   activeIds;
-            for (int id = 1; id <= NUM_SLAVES; id++) {
+            for (int id = 1; id <= 20; id++) {
                 if (_pollMgr->isStable(id) && 
                     _pollMgr->getNodeStatus(id) == NODE_STABLE && 
                     _pollMgr->isWhitelisted(id)) {
@@ -59,6 +74,7 @@ void ProductionHandler::onLoop() {
 
                 xSemaphoreTake(_mutex, portMAX_DELAY);
                 _ctx->config.accumulatedWeight += res.totalWeight;
+                saveParams(); // 持久化累计重量
                 
                 _ctx->prog.sysStatus            = SYS_TRANSFER_B1;
                 _ctx->prog.idMask               = 0;
@@ -81,4 +97,42 @@ void ProductionHandler::onLoop() {
             }
         }
     }
+}
+
+void AppProduction::onExit() {
+    Serial.println("[AppProduction] Production Mode Exited.");
+}
+
+void AppProduction::updateTargets(float dMin, float dMax) {
+    xSemaphoreTake(_mutex, portMAX_DELAY);
+    _ctx->config.targetMin += dMin;
+    _ctx->config.targetMax += dMax;
+    if (_ctx->config.targetMin < 10) _ctx->config.targetMin = 10;
+    if (_ctx->config.targetMax < _ctx->config.targetMin)
+        _ctx->config.targetMax = _ctx->config.targetMin;
+    saveParams();
+    xSemaphoreGive(_mutex);
+}
+
+void AppProduction::clearAccumulated() {
+    xSemaphoreTake(_mutex, portMAX_DELAY);
+    _ctx->config.accumulatedWeight = 0;
+    saveParams();
+    xSemaphoreGive(_mutex);
+}
+
+void AppProduction::loadParams() {
+    _nvs.begin("production", true);
+    _ctx->config.targetMin = _nvs.getFloat("tmin", 290.0f);
+    _ctx->config.targetMax = _nvs.getFloat("tmax", 310.0f);
+    _ctx->config.accumulatedWeight = _nvs.getFloat("accu", 0.0f);
+    _nvs.end();
+}
+
+void AppProduction::saveParams() {
+    _nvs.begin("production", false);
+    _nvs.putFloat("tmin", _ctx->config.targetMin);
+    _nvs.putFloat("tmax", _ctx->config.targetMax);
+    _nvs.putFloat("accu", _ctx->config.accumulatedWeight);
+    _nvs.end();
 }

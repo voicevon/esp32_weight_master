@@ -1,6 +1,6 @@
 #include "PollManager.h"
 #include <Preferences.h>
-#include "SystemConfig.h"
+#include "system/SystemConfig.h"
 
 // Union for weight parsing
 union FloatConverter {
@@ -31,17 +31,10 @@ void PollManager::setMode(OperationMode mode) {
     }
 }
 
-bool PollManager::isSafeToSwitch() const {
-    ModbusMaster::TransactionStatus status = _mb->getStatus();
-    return (status == ModbusMaster::ST_IDLE || 
-            status == ModbusMaster::ST_SUCCESS || 
-            status == ModbusMaster::ST_TIMEOUT || 
-            status == ModbusMaster::ST_ERROR);
-}
 
 void PollManager::process() {
-    // 核心解耦点：只有当驱动层真正空闲时，业务调度层才下发任务 (Phase 4 修正：允许所有终态状态)
-    if (!isSafeToSwitch()) return;
+    // 核心解耦点：只有当驱动层真正空闲时，业务调度层才下发任务
+    if (_mb->getStatus() == ModbusMaster::ST_WAITING) return;
 
     switch (_curMode) {
         case MODE_PRODUCTION:
@@ -221,6 +214,15 @@ void PollManager::fillUISnapshot(UISnapshot& snapshot) const {
     }
     snapshot.stableWeightSum = sSum;
     snapshot.unstableWeightSum = uSum;
+
+    // 填充扫描与诊断数据 (New phase 4)
+    snapshot.scanProgress = _scanProgress;
+    snapshot.scanCycle = _scanCycle;
+    for(int c=0; c<5; c++) {
+        for(int i=1; i<=20; i++) {
+            snapshot.scanResults[c][i] = _scanHistory[c][i];
+        }
+    }
 }
 
 uint32_t PollManager::getWhitelistMask() const {

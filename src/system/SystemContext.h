@@ -3,8 +3,8 @@
 
 #include <Arduino.h>
 #include <vector>
-#include "SystemTypes.h"
-#include "SystemConfig.h"
+#include "system/SystemTypes.h"
+#include "system/SystemConfig.h"
 
 /**
  * @brief 整合上下文体
@@ -12,7 +12,6 @@
 struct SystemContext {
     ProductionParams   config;
     WSProductionState  prog;
-    DiagContext      diag;
     UISnapshot       ui;
 };
 

@@ -4,7 +4,7 @@
 #include <Arduino.h>
 #include <functional>
 #include "PinDefinition.h"
-#include "SystemTypes.h"
+#include "system/SystemTypes.h"
 
 // 自定义 Modbus 结果枚举，解耦第三方库
 namespace Modbus {

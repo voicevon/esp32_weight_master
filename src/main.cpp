@@ -1,24 +1,26 @@
 /**
  * @file main.cpp
- * @brief 系统启动入口（精简版）
- *
- * 职责边界：
- *   - 实例化所有顶层对象（驱动层 → 业务层 → 应用层）
- *   - 初始化硬件与 UI
- *   - 调用 AppController::begin() 启动双核任务
- *
- * 全部业务逻辑已迁移至 AppController.cpp（Phase 1 重构）
+ * @brief 系统启动入口（App-based Peer Architecture）
  */
 
 #include <Arduino.h>
-#include "HardwareManager.h"
-#include "UIManager.h"
-#include "system/ModbusMaster.h"
-#include "system/PinDefinition.h"
+#include "drivers/HardwareManager.h"
+#include "ui/UIManager.h"
+#include "drivers/ModbusMaster.h"
+#include "drivers/PinDefinition.h"
 #include "logic/CombinationEngine.h"
 #include "logic/ConveyorController.h"
-#include "system/PollManager.h"
-#include "AppController.h"
+#include "logic/PollManager.h"
+
+// Apps
+#include "apps/AppDispatcher.h"
+#include "apps/AppProduction.h"
+#include "apps/AppScan.h"
+#include "apps/AppDiagPulse.h"
+#include "apps/AppSequentialCtrl.h"
+
+// --- 全局共享状态 ---
+SystemContext      sysCtx;
 
 // --- 驱动层 ---
 HardwareManager    hw;
@@ -30,13 +32,24 @@ PollManager        pollManager(&rs485);
 CombinationEngine  engine(290.0f, 310.0f);
 ConveyorController conveyor(&rs485, MOTOR_ID_BELT1, MOTOR_ID_BELT2);
 
-// --- 应用层协调器 ---
-AppController      appCtrl(&rs485, &pollManager, &engine, &conveyor, &ui);
+// --- 核心调度器 ---
+AppDispatcher      dispatcher(&sysCtx, &rs485, &pollManager, &ui);
+
+// --- 互斥锁 (共享状态同步) ---
+SemaphoreHandle_t  mutexCtx;
+
+// --- 具体应用实例 ---
+AppProduction      appProduction(&sysCtx, &pollManager, &rs485, &engine, &conveyor, nullptr);
+AppScan            appScan(&sysCtx, &pollManager, nullptr);
+AppDiagPulse       appDiagPulse(&sysCtx, &rs485, nullptr);
+AppSequentialCtrl  appSeqCtrl(&sysCtx, &rs485, &pollManager, nullptr);
 
 void setup() {
     Serial.begin(115200);
     delay(1000);
-    Serial.println("\n[SYSTEM] Starting Waveshare ESP32-S3 Weight Master...");
+    Serial.println("\n[SYSTEM] Starting App-based Weight Master...");
+
+    mutexCtx = xSemaphoreCreateMutex();
 
     if (hw.begin()) {
         hw.lvglInit();
@@ -47,10 +60,22 @@ void setup() {
         while (1) delay(100);
     }
 
-    appCtrl.begin(); // 启动双核任务并进入生产模式
+    // 重新注入互斥锁与状态上下文
+    appProduction = AppProduction(&sysCtx, &pollManager, &rs485, &engine, &conveyor, mutexCtx);
+    appScan       = AppScan(&sysCtx, &pollManager, mutexCtx);
+    appDiagPulse  = AppDiagPulse(&sysCtx, &rs485, mutexCtx);
+    appSeqCtrl    = AppSequentialCtrl(&sysCtx, &rs485, &pollManager, mutexCtx);
+
+    // 注册应用
+    dispatcher.registerApp(&appProduction);
+    dispatcher.registerApp(&appScan);
+    dispatcher.registerApp(&appDiagPulse);
+    dispatcher.registerApp(&appSeqCtrl);
+
+    // 启动调度器 (内部会启动双核任务)
+    dispatcher.begin(MODE_PRODUCTION); 
 }
 
 void loop() {
-    // 业务已全部交由 FreeRTOS 双核任务处理，loop 保持空闲
     vTaskDelay(pdMS_TO_TICKS(1000));
 }

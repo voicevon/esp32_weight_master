@@ -1,7 +1,7 @@
 #ifndef CONVEYOR_CONTROLLER_H
 #define CONVEYOR_CONTROLLER_H
 
-#include "system/ModbusMaster.h"
+#include "drivers/ModbusMaster.h"
 
 class ConveyorController {
 public:

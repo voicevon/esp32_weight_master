@@ -540,20 +540,20 @@ void UIManager::updateScanModal(const SystemContext* ctx) {
     if (ctx->ui.curMode == MODE_DIAG_SCAN) {
         if (!scan_modal) buildScanModal();
         char buf[64];
-        snprintf(buf, sizeof(buf), "第 %d / 5 轮 (进度: %d / 20)", ctx->diag.currentScanCycle + 1, ctx->diag.scanProgress);
+        snprintf(buf, sizeof(buf), "第 %d / 5 轮 (进度: %d / 20)", ctx->ui.scanCycle + 1, ctx->ui.scanProgress);
         lv_label_set_text(scan_progress_label, buf);
 
         for (int c = 0; c < 5; c++) {
             for (int i = 1; i <= 20; i++) {
                 if (!scan_blocks[c][i]) continue;
                 
-                bool isPastCycle = (c < ctx->diag.currentScanCycle);
-                bool isCurrentCycleProgress = (c == ctx->diag.currentScanCycle && i < ctx->diag.scanProgress);
+                bool isPastCycle = (c < ctx->ui.scanCycle);
+                bool isCurrentCycleProgress = (c == ctx->ui.scanCycle && i < ctx->ui.scanProgress);
                 
                 if (isPastCycle || isCurrentCycleProgress) {
-                    bool passed = ctx->diag.scanResults[c][i];
+                    bool passed = ctx->ui.scanResults[c][i];
                     lv_obj_set_style_bg_color(scan_blocks[c][i], passed ? lv_color_hex(0x22C55E) : lv_color_hex(0xEF4444), 0);
-                } else if (c == ctx->diag.currentScanCycle && i == ctx->diag.scanProgress) {
+                } else if (c == ctx->ui.scanCycle && i == ctx->ui.scanProgress) {
                     lv_obj_set_style_bg_color(scan_blocks[c][i], lv_color_hex(0x38BDF8), 0);
                 } else {
                     lv_obj_set_style_bg_color(scan_blocks[c][i], lv_color_hex(0x334155), 0);
@@ -565,7 +565,7 @@ void UIManager::updateScanModal(const SystemContext* ctx) {
         for (int c = 0; c < 5; c++) {
             for (int i = 1; i <= 20; i++) {
                 if (!scan_blocks[c][i]) continue;
-                lv_obj_set_style_bg_color(scan_blocks[c][i], ctx->diag.scanResults[c][i] ? lv_color_hex(0x22C55E) : lv_color_hex(0xEF4444), 0);
+                lv_obj_set_style_bg_color(scan_blocks[c][i], ctx->ui.scanResults[c][i] ? lv_color_hex(0x22C55E) : lv_color_hex(0xEF4444), 0);
             }
         }
         lv_label_set_text(scan_title_label, "扫描完成");
@@ -742,7 +742,7 @@ void UIManager::updateDashboard(const SystemContext* ctx) {
         if (isPulse) {
             // 这里可以增加对 hexBuf 的 Dirty Check，但诊断界面通常不需要极致性能
             lv_label_set_text(diag_tx_label, "发送测试中..."); 
-            lv_label_set_text(diag_rx_label, ctx->diag.diagRxHex);
+            lv_label_set_text(diag_rx_label, ctx->ui.diagRxHex);
         }
         
         // 5. 舵机测试状态同步 (红/绿/紫 3色逻辑)

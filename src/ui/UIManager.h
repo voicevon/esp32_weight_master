@@ -5,8 +5,8 @@
 #include <stdint.h>
 #include <vector>
 #include "system/SystemContext.h"
-#include "system/PinDefinition.h"
-#include "I_Command_Bus.h"
+#include "drivers/PinDefinition.h"
+#include "ui/I_Command_Bus.h"
 
 // Font declarations
 LV_FONT_DECLARE(ui_font_chs_16);

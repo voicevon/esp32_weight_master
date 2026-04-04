@@ -2,9 +2,9 @@
 #define POLL_MANAGER_H
 
 #include <Arduino.h>
-#include "ModbusMaster.h"
-#include "SystemTypes.h"
-#include "I_Command_Bus.h"
+#include "drivers/ModbusMaster.h"
+#include "system/SystemTypes.h"
+#include "ui/I_Command_Bus.h"
 
 /**
  * @class PollManager
@@ -22,8 +22,6 @@ public:
     void setMode(OperationMode mode);
     OperationMode getMode() const { return _curMode; }
     
-    // 原子切换检查：总线是否处于终端或空闲状态
-    bool isSafeToSwitch() const;
     
     // 数据查询接口 (UI/业务逻辑调用)
     float getWeight(int id) const;
