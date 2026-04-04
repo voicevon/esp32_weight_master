@@ -9,6 +9,7 @@
 #include "logic/ConveyorController.h"
 #include "UIManager.h"
 #include "I_Command_Bus.h"
+#include "system/IModeHandler.h"
 
 // 前向声明
 class ModbusMaster;
@@ -47,18 +48,21 @@ private:
 
     // --- 业务状态 (Phase 4: 整合上下文) ---
     SystemContext      _ctx;
-    float              _accumulatedWeight   = 0.0f;
-    bool               _isProductionActive  = true;
-    
-    // 全局置零进度跟踪
-    bool               _isTareRunning       = false;
-    int                _tareProgress        = 0;
-    
     Preferences        _nvs;
 
     // --- FreeRTOS 同步原语 (Phase 4: 优化锁) ---
     SemaphoreHandle_t _mutexProduction = nullptr; // 保护 config 与 prog
     SemaphoreHandle_t _mutexDiag       = nullptr; // 保护 diag 日志
+
+    // --- 模式管理与原子切换 ---
+    IModeHandler*         _currentHandler = nullptr;
+    OperationMode         _pendingMode    = MODE_IDLE;
+    OperationMode         _currentMode    = MODE_IDLE;
+    std::vector<IModeHandler*> _handlers;
+
+    void selectHandler(OperationMode mode);
+    bool canSwitchMode() const;
+    void executeModeSwitch();
 
     // --- 内部辅助与任务 ---
     static const char* modeToStr(OperationMode m);

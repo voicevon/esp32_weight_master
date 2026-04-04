@@ -1,6 +1,8 @@
 #ifndef SYSTEM_TYPES_H
 #define SYSTEM_TYPES_H
 
+#include <Arduino.h>
+
 /**
  * @brief 系统全局运行模式
  * 不同模式对应不同的硬件资源占用策略，确保诊断与生产互斥
@@ -67,10 +69,10 @@ struct ProductionParams {
 /**
  * @brief 生产运行动态 (非持久化)
  */
-struct ProductionState {
-    SystemStatus status;          // READY, DISCHARGING...
-    float        lastBatchWeight; // 最近成功的组合重量
-    uint32_t     selectionMask;   // 下料掩码
+struct WSProductionState {
+    SystemStatus sysStatus;       // READY, DISCHARGING...
+    float        batchWeight;     // 最近成功的组合重量
+    uint32_t     idMask;          // 下料掩码
 };
 
 /**

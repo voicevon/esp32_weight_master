@@ -7,59 +7,27 @@
 #include "logic/CombinationEngine.h"
 #include "logic/ConveyorController.h"
 #include "UIManager.h"
+#include "logic/ProductionHandler.h"
+#include "system/ScanHandler.h"
+#include "system/DiagPulseHandler.h"
+#include "system/SequentialCtrlHandler.h"
 
 // =============================================================================
 // ICommandBus 实现
 // =============================================================================
 
 void AppController::cmdGlobalTare() {
-    if (_isTareRunning) return;
-
-    Serial.println("[CMD] Requesting Global Tare. Waiting for bus idle...");
+    Serial.println("[CMD] UI Requested Global Tare. Entering Pending State.");
     
-    // 1. 原子化准备：等待当前 Modbus 事务结束 (微秒级等待，通常 < 100ms)
-    unsigned long startWait = millis();
-    while (!_pollMgr->isSafeToSwitch()) {
-        if (millis() - startWait > 500) {
-            Serial.println("[CMD] Timeout waiting for bus idle. Aborting.");
-            return;
+    // 找到 SequentialCtrlHandler 并触发指令
+    for (auto h : _handlers) {
+        if (h->getMode() == MODE_SEQUENTIAL_CTRL) {
+            static_cast<SequentialCtrlHandler*>(h)->triggerGlobalTare();
+            break;
         }
-        vTaskDelay(pdMS_TO_TICKS(1));
     }
 
-    // 2. 独占锁定：切换至序列控制模式以静默背景轮询
-    OperationMode oldMode = _ctx.ui.curMode;
     updateOperationMode(MODE_SEQUENTIAL_CTRL);
-    _isTareRunning = true;
-    _tareProgress = 0;
-
-    Serial.println("[CMD] Global Tare (Exclusive Mode) Started.");
-
-    int onlineCount = 0;
-    for (int i = 1; i <= 20; i++) if (_pollMgr->isOnline(i)) onlineCount++;
-
-    int processed = 0;
-    for (int i = 1; i <= 20; i++) {
-        if (_pollMgr->isOnline(i)) {
-            Serial.printf("[CMD] Taring Node %d... (%d/%d)\n", i, processed + 1, onlineCount);
-            
-            // 使用 syncWrite 确保可靠执行 (内部包含确认机制)
-            bool ok = _rs485->syncWrite(i, 0x0100, CMD_TARE);
-            if (ok) Serial.printf("[CMD] Node %d: Tare SUCCESS\n", i);
-            else   Serial.printf("[CMD] Node %d: Tare FAILED (Timeout)\n", i);
-            
-            processed++;
-            if (onlineCount > 0) _tareProgress = (processed * 100) / onlineCount;
-            vTaskDelay(pdMS_TO_TICKS(50)); // 必要的总线静默间隙
-        }
-    }
-
-    // 3. 恢复现场
-    _isTareRunning = false;
-    _tareProgress = 100;
-    updateOperationMode(oldMode);
-    
-    Serial.println("[CMD] Global Tare Finished. Returning to Normal Mode.");
 }
 
 void AppController::cmdStartScan() {
@@ -84,7 +52,6 @@ void AppController::cmdServoTest(int id, bool open) {
 
 void AppController::cmdClearAccumulated() {
     xSemaphoreTake(_mutexProduction, portMAX_DELAY);
-    _accumulatedWeight            = 0;
     _ctx.config.accumulatedWeight = 0;
     _nvs.begin("production", false);
     _nvs.putFloat("accu", 0.0f);
@@ -111,20 +78,48 @@ void AppController::cmdUpdateTargets(float dMin, float dMax) {
 // =============================================================================
 
 void AppController::updateOperationMode(OperationMode newMode) {
-    if (_ctx.ui.curMode == newMode) return;
+    if (_pendingMode == newMode && _currentMode == newMode) return;
 
-    Serial.printf("[SYSTEM] Mode Changing: %s -> %s\n",
-                  modeToStr(_ctx.ui.curMode),
-                  modeToStr(newMode));
+    Serial.printf("[SYSTEM] Mode Switch REQUESTED: %s\n", modeToStr(newMode));
+    _pendingMode = newMode;
+}
 
-    if (_ctx.ui.curMode == MODE_DIAG_SCAN || _ctx.ui.curMode == MODE_DIAG_PULSE)
-        _rs485->clearRawBuffer();
+void AppController::executeModeSwitch() {
+    if (_pendingMode == _currentMode) return;
 
+    Serial.printf("[SYSTEM] ATOMIC SWITCH: %s -> %s\n",
+                  modeToStr(_currentMode),
+                  modeToStr(_pendingMode));
+
+    if (_currentHandler) {
+        _currentHandler->onExit();
+    }
+
+    _currentMode = _pendingMode;
+    
+    // 更新上下文以通告 UI
     xSemaphoreTake(_mutexProduction, portMAX_DELAY);
-    _ctx.ui.curMode = newMode;
+    _ctx.ui.curMode = _currentMode;
     xSemaphoreGive(_mutexProduction);
 
-    _pollMgr->setMode(newMode);
+    // 寻找新 Handler
+    _currentHandler = nullptr;
+    for (auto h : _handlers) {
+        if (h->getMode() == _currentMode) {
+            _currentHandler = h;
+            break;
+        }
+    }
+
+    if (_currentHandler) {
+        _currentHandler->onEnter();
+    }
+}
+
+bool AppController::canSwitchMode() const {
+    // 只有当总线真正空闲或处于结果终态时，才允许切换
+    ModbusMaster::TransactionStatus status = _rs485->getStatus();
+    return (status != ModbusMaster::ST_WAITING);
 }
 
 // =============================================================================
@@ -150,21 +145,26 @@ void AppController::begin() {
     _nvs.begin("production", true);
     _ctx.config.targetMin = _nvs.getFloat("tmin", 290.0f);
     _ctx.config.targetMax = _nvs.getFloat("tmax", 310.0f);
-    _accumulatedWeight    = _nvs.getFloat("accu", 0.0f);
-    _ctx.config.accumulatedWeight = _accumulatedWeight;
+    _ctx.config.accumulatedWeight = _nvs.getFloat("accu", 0.0f);
     _nvs.end();
 
     // --- 初始化通讯层与外设 ---
     _rs485->begin();
     _pollMgr->begin();
     _conveyor->begin();
-    _ctx.prog.status = SYS_READY;
+    _ctx.prog.sysStatus = SYS_READY;
+
+    // --- 初始化 Handlers ---
+    _handlers.push_back(new ProductionHandler(&_ctx, _pollMgr, _rs485, _engine, _conveyor, _mutexProduction));
+    _handlers.push_back(new ScanHandler(&_ctx, _pollMgr, _mutexDiag));
+    _handlers.push_back(new DiagPulseHandler(&_ctx, _rs485, _mutexDiag));
+    _handlers.push_back(new SequentialCtrlHandler(&_ctx, _rs485, _pollMgr, _mutexDiag));
 
     // --- 启动双核 FreeRTOS 任务 ---
     xTaskCreatePinnedToCore(controlTaskEntry, "ControlTask", 8192, this, 10, NULL, 1);
     xTaskCreatePinnedToCore(uiTaskEntry,      "UITask",      8192, this,  5, NULL, 0);
 
-    Serial.println("[SYSTEM] Phase 4 Core Ready");
+    Serial.println("[SYSTEM] Phase 4 Core Ready (App Architecture)");
     delay(500); 
     updateOperationMode(MODE_PRODUCTION);
 }
@@ -179,139 +179,27 @@ void AppController::controlTaskEntry(void* self) {
 
 void AppController::controlLoop() {
     Serial.println("[TASK] Control Task Started on Core 1");
-    static unsigned long lastDiagPulseTime = 0;
-    static unsigned long lastCalcTime      = 0;
 
     while (true) {
-        OperationMode mode;
-        xSemaphoreTake(_mutexProduction, portMAX_DELAY);
-        mode = _ctx.ui.curMode;
-        xSemaphoreGive(_mutexProduction);
-
-        // --- 1. 链路诊断模式 (1Hz 原始字节脉冲) ---
-        if (mode == MODE_DIAG_PULSE) {
-            if (millis() - lastDiagPulseTime >= 1000) {
-                lastDiagPulseTime = millis();
-                xSemaphoreTake(_mutexDiag, portMAX_DELAY);
-                _ctx.diag.diagLastSent++;
-                uint8_t toSend = _ctx.diag.diagLastSent;
-                xSemaphoreGive(_mutexDiag);
-                _rs485->sendRawByte(toSend);
-            }
-            if (_rs485->availableRaw() > 0) {
-                xSemaphoreTake(_mutexDiag, portMAX_DELAY);
-                while (_rs485->availableRaw() > 0) {
-                    uint8_t b = _rs485->readRawByte();
-                    char hexBuf[8];
-                    snprintf(hexBuf, sizeof(hexBuf), "%02X ", b);
-                    if (strlen(_ctx.diag.diagRxHex) > 100)
-                        memset(_ctx.diag.diagRxHex, 0, sizeof(_ctx.diag.diagRxHex));
-                    strncat(_ctx.diag.diagRxHex, hexBuf, sizeof(_ctx.diag.diagRxHex) - strlen(_ctx.diag.diagRxHex) - 1);
-                }
-                xSemaphoreGive(_mutexDiag);
-            }
-            vTaskDelay(pdMS_TO_TICKS(10));
-            continue;
+        // 1. 原子切换检查
+        if (_pendingMode != _currentMode && canSwitchMode()) {
+            executeModeSwitch();
         }
 
-        // --- 2. 轮询器处理与自动扫描同步 ---
-        _pollMgr->process();
-
-        if (mode == MODE_DIAG_SCAN) {
-             xSemaphoreTake(_mutexDiag, portMAX_DELAY);
-             _ctx.diag.scanProgress     = _pollMgr->getScanProgress();
-             _ctx.diag.currentScanCycle = _pollMgr->getScanCycle();
-             for(int c=0; c<5; c++)
-                 for(int i=1; i<=20; i++)
-                     _ctx.diag.scanResults[c][i] = _pollMgr->getScanHistory(c, i);
-             xSemaphoreGive(_mutexDiag);
+        // 2. 调度当前 Handler
+        if (_currentHandler) {
+            _currentHandler->onLoop();
         }
 
-        // --- 3. 生产称重流程 ---
-        if (mode == MODE_PRODUCTION) {
-            bool  canCalculate;
-            float currentMin, currentMax;
-            SystemStatus currentStatus;
-
-            xSemaphoreTake(_mutexProduction, portMAX_DELAY);
-            canCalculate  = _isProductionActive;
-            currentMin    = _ctx.config.targetMin;
-            currentMax    = _ctx.config.targetMax;
-            currentStatus = _ctx.prog.status;
-            xSemaphoreGive(_mutexProduction);
-
-            if (canCalculate && currentStatus == SYS_READY) {
-                if (millis() - lastCalcTime > CALC_ENGINE_INTERVAL_MS) {
-                    lastCalcTime = millis();
-                    _engine->setTargetRange(currentMin, currentMax);
-
-                    // Phase 4: [DIRECT ACCESS] 直接从 PollManager 获取数据，消除 redundant 拷贝层
-                    std::vector<float> activeWeights;
-                    std::vector<int>   activeIds;
-                    for (int id = 1; id <= NUM_SLAVES; id++) {
-                        if (_pollMgr->isStable(id) && 
-                            _pollMgr->getNodeStatus(id) == NODE_STABLE && 
-                            _pollMgr->isWhitelisted(id)) {
-                            activeWeights.push_back(_pollMgr->getWeight(id));
-                            activeIds.push_back(id);
-                        }
-                    }
-
-                    CombinationResult res = {false, 0.0f, {}};
-                    if (!activeWeights.empty()) res = _engine->findBestCombination(activeWeights);
-
-                    if (res.success) {
-                        xSemaphoreTake(_mutexProduction, portMAX_DELAY);
-                        _ctx.prog.status           = SYS_DISCHARGING;
-                        _ctx.prog.lastBatchWeight  = res.totalWeight;
-                        _ctx.prog.selectionMask    = 0;
-                        std::vector<int> mappedIds;
-                        for (int idx : res.selectedIndices) {
-                            int physId = activeIds[idx];
-                            mappedIds.push_back(physId);
-                            _ctx.prog.selectionMask |= (1 << (physId - 1));
-                            _pollMgr->setNodeStatus(physId, NODE_LOCKED);
-                        }
-                        xSemaphoreGive(_mutexProduction);
-
-                        Serial.printf("[AUTO] Combined: %.1f g, Mask: 0x%08X\n", res.totalWeight, _ctx.prog.selectionMask);
-
-                        // 执行下料指令
-                        for (int id : mappedIds) _rs485->syncWrite(id, 0x0100, 5);
-                        vTaskDelay(pdMS_TO_TICKS(DISCHARGE_SETTLE_MS));
-                        for (int id : mappedIds) _pollMgr->setNodeStatus(id, NODE_DIRTY);
-
-                        xSemaphoreTake(_mutexProduction, portMAX_DELAY);
-                        _accumulatedWeight            += res.totalWeight;
-                        _ctx.config.accumulatedWeight  = _accumulatedWeight;
-                        
-                        // Persistence: Save to NVS immediately
-                        _nvs.begin("production", false);
-                        _nvs.putFloat("accu", _accumulatedWeight);
-                        _nvs.end();
-
-                        _ctx.prog.status               = SYS_TRANSFER_B1;
-                        _ctx.prog.selectionMask        = 0;
-                        xSemaphoreGive(_mutexProduction);
-
-                        // 输送带动作
-                        _conveyor->collectFromUnits();
-                        vTaskDelay(pdMS_TO_TICKS(BELT_COLLECT_PERIOD_MS));
-                        
-                        xSemaphoreTake(_mutexProduction, portMAX_DELAY);
-                        _ctx.prog.status = SYS_STEPPING_B2;
-                        xSemaphoreGive(_mutexProduction);
-                        
-                        _conveyor->advanceOutput();
-                        vTaskDelay(pdMS_TO_TICKS(BELT_STEP_PERIOD_MS));
-
-                        xSemaphoreTake(_mutexProduction, portMAX_DELAY);
-                        _ctx.prog.status = SYS_READY;
-                        xSemaphoreGive(_mutexProduction);
-                    }
-                }
+        // 3. 处理 Sequential 模式的自动返回 (可选)
+        if (_currentMode == MODE_SEQUENTIAL_CTRL && _currentHandler) {
+            auto seq = static_cast<SequentialCtrlHandler*>(_currentHandler);
+            if (seq->isFinished()) {
+                // 暂时简单的回退到生产模式，或者记录之前的模式
+                updateOperationMode(MODE_PRODUCTION);
             }
         }
+
         vTaskDelay(pdMS_TO_TICKS(1));
     }
 }
@@ -336,8 +224,14 @@ void AppController::uiLoop() {
         _pollMgr->fillUISnapshot(_ctx.ui);
         
         // 同步序列控制状态
-        _ctx.ui.isTareRunning = _isTareRunning;
-        _ctx.ui.tareProgress = _tareProgress;
+        if (_currentMode == MODE_SEQUENTIAL_CTRL && _currentHandler) {
+            auto seq = static_cast<SequentialCtrlHandler*>(_currentHandler);
+            _ctx.ui.isTareRunning = !seq->isFinished();
+            _ctx.ui.tareProgress = seq->getProgress();
+        } else {
+            _ctx.ui.isTareRunning = false;
+            _ctx.ui.tareProgress = 0;
+        }
 
         xSemaphoreTake(_mutexProduction, portMAX_DELAY);
         xSemaphoreGive(_mutexProduction);

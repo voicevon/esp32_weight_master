@@ -626,9 +626,9 @@ void UIManager::updateDashboard(const SystemContext* ctx) {
     } else {
         // 状态更新逻辑 (简单 Dirty Check)
         static SystemStatus lastStatus = (SystemStatus)-1;
-        if (_isFirstUpdate || ctx->prog.status != lastStatus || modeChanged) {
-            lastStatus = ctx->prog.status;
-            switch (ctx->prog.status) {
+        if (_isFirstUpdate || ctx->prog.sysStatus != lastStatus || modeChanged) {
+            lastStatus = ctx->prog.sysStatus;
+            switch (ctx->prog.sysStatus) {
                 case SYS_READY: 
                     lv_label_set_text(status_label, "就绪"); 
                     lv_obj_set_style_text_color(status_label, lv_color_hex(0x22C55E), 0);
@@ -693,7 +693,7 @@ void UIManager::updateDashboard(const SystemContext* ctx) {
     }
 
     // 3. 核心优化：20 个节点的 Bar Graph (Dirty Check)
-    uint32_t selectionMask = ctx->prog.selectionMask;
+    uint32_t selectionMask = ctx->prog.idMask;
     static uint32_t lastMask = 0;
 
     for(int i = 1; i <= NUM_SLAVES; i++) {
