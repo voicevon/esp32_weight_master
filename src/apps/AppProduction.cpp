@@ -16,87 +16,166 @@ AppProduction::AppProduction(SystemContext* ctx, PollManager* pollMgr, ModbusMas
 
 void AppProduction::onEnter() {
     loadParams();
+    _dischargeIndex = 0;
+    _selectedIds.clear();
+    _stateStartTime = millis();
+    updateUIState(SYS_READY);
     Serial.println("[AppProduction] Production Mode Entered.");
 }
 
 void AppProduction::onLoop() {
-    handlePolling();
-
-    // 核心组合引擎逻辑由独立节拍控制
-    bool  canCalculate = true; 
-    float currentMin, currentMax;
+    unsigned long now = millis();
     SystemStatus currentStatus;
 
+    // 同步获取当前业务状态
     xSemaphoreTake(_mutex, portMAX_DELAY);
-    currentMin    = _ctx->config.targetMin;
-    currentMax    = _ctx->config.targetMax;
     currentStatus = _ctx->prog.sysStatus;
     xSemaphoreGive(_mutex);
 
-    if (canCalculate && currentStatus == SYS_READY) {
-        if (millis() - _lastCalcTime > CALC_ENGINE_INTERVAL_MS) {
-            _lastCalcTime = millis();
-            _engine->setTargetRange(currentMin, currentMax);
+    // 1. 动态轮询控制：在就绪及皮带运转期间刷新数据，提高系统吞吐率
+    if (currentStatus == SYS_READY || currentStatus == SYS_TRANSFER_B1 || currentStatus == SYS_STEPPING_B2) {
+        handlePolling();
+    }
 
-            std::vector<float> activeWeights;
-            std::vector<int>   activeIds;
-            for (int id = 1; id <= 20; id++) {
-                if (_pollMgr->isStable(id) && 
-                    _pollMgr->getNodeStatus(id) == NODE_STABLE && 
-                    _pollMgr->isWhitelisted(id)) {
-                    activeWeights.push_back(_pollMgr->getWeight(id));
-                    activeIds.push_back(id);
-                }
-            }
+    // 2. 状态机核心路由
+    switch (currentStatus) {
+        case SYS_READY:
+            handleReadyState(now);
+            break;
 
-            CombinationResult res = {false, 0.0f, {}};
-            if (!activeWeights.empty()) res = _engine->findBestCombination(activeWeights);
+        case SYS_DISCHARGING:
+            handleDischargeState(now);
+            break;
 
-            if (res.success) {
-                xSemaphoreTake(_mutex, portMAX_DELAY);
-                _ctx->prog.sysStatus        = SYS_DISCHARGING;
-                _ctx->prog.batchWeight      = res.totalWeight;
-                _ctx->prog.idMask           = 0;
-                std::vector<int> mappedIds;
-                for (int idx : res.selectedIndices) {
-                    int physId = activeIds[idx];
-                    mappedIds.push_back(physId);
-                    _ctx->prog.idMask |= (1 << (physId - 1));
-                    _pollMgr->setNodeStatus(physId, NODE_LOCKED);
-                }
-                xSemaphoreGive(_mutex);
+        case SYS_WAIT_SETTLE:
+            handleWaitSettleState(now);
+            break;
 
-                Serial.printf("[AppProduction] Combined: %.1f g, Mask: 0x%08X\n", res.totalWeight, _ctx->prog.idMask);
+        case SYS_TRANSFER_B1:
+            handleTransferState(now);
+            break;
 
-                for (int id : mappedIds) _rs485->syncWrite(id, 0x0100, 5);
-                vTaskDelay(pdMS_TO_TICKS(DISCHARGE_SETTLE_MS));
-                for (int id : mappedIds) _pollMgr->setNodeStatus(id, NODE_DIRTY);
+        case SYS_STEPPING_B2:
+            handleSteppingState(now);
+            break;
 
-                xSemaphoreTake(_mutex, portMAX_DELAY);
-                _ctx->config.accumulatedWeight += res.totalWeight;
-                saveParams(); 
-                
-                _ctx->prog.sysStatus            = SYS_TRANSFER_B1;
-                _ctx->prog.idMask               = 0;
-                xSemaphoreGive(_mutex);
-
-                _conveyor->collectFromUnits();
-                vTaskDelay(pdMS_TO_TICKS(BELT_COLLECT_PERIOD_MS));
-                
-                xSemaphoreTake(_mutex, portMAX_DELAY);
-                _ctx->prog.sysStatus = SYS_STEPPING_B2;
-                xSemaphoreGive(_mutex);
-                
-                _conveyor->advanceOutput();
-                vTaskDelay(pdMS_TO_TICKS(BELT_STEP_PERIOD_MS));
-
-                xSemaphoreTake(_mutex, portMAX_DELAY);
-                _ctx->prog.sysStatus = SYS_READY;
-                xSemaphoreGive(_mutex);
-            }
-        }
+        default:
+            updateUIState(SYS_READY); // 异常状态恢复
+            break;
     }
 }
+
+void AppProduction::handleReadyState(unsigned long now) {
+    if (now - _lastCalcTime <= CALC_ENGINE_INTERVAL_MS) return;
+    _lastCalcTime = now;
+
+    float currentMin, currentMax;
+    xSemaphoreTake(_mutex, portMAX_DELAY);
+    currentMin = _ctx->config.targetMin;
+    currentMax = _ctx->config.targetMax;
+    xSemaphoreGive(_mutex);
+
+    // 1. 预检查：仅在稳定总重可能达标时才启动昂贵的引擎计算 (优化项)
+    float stableSum = 0;
+    std::vector<float> activeWeights;
+    std::vector<int>   activeIds;
+
+    for (int id = 1; id <= 20; id++) {
+        if (_pollMgr->isOnline(id) && _pollMgr->isStable(id) && _pollMgr->isWhitelisted(id)) {
+            float w = _pollMgr->getWeight(id);
+            stableSum += w;
+            activeWeights.push_back(w);
+            activeIds.push_back(id);
+        }
+    }
+
+    if (stableSum < currentMin) return; 
+
+    // 2. 调用算法引擎
+    _engine->setTargetRange(currentMin, currentMax);
+    CombinationResult res = _engine->findBestCombination(activeWeights);
+    if (!res.success) return;
+
+    // 3. 准备下料数据并切入下料状态
+    _selectedIds.clear();
+    uint32_t mask = 0;
+    for (int idx : res.selectedIndices) {
+        int physId = activeIds[idx];
+        _selectedIds.push_back(physId);
+        mask |= (1 << (physId - 1));
+    }
+    
+    _dischargeIndex = 0;
+    _lastCombinedWeight = res.totalWeight;
+    updateUIState(SYS_DISCHARGING, mask, res.totalWeight);
+    Serial.printf("[AppProduction] Combined: %.1f g, Mask: 0x%08X\n", res.totalWeight, mask);
+}
+
+void AppProduction::handleDischargeState(unsigned long now) {
+    // 异步逐个分发下料指令
+    if (_dischargeIndex < (int)_selectedIds.size()) {
+        int nodeId = _selectedIds[_dischargeIndex];
+        bool sent = _rs485->asyncWrite(nodeId, 0x0100, 5, [this](Modbus::ResultCode res, uint16_t tid, void* data) {
+            this->_dischargeIndex++;
+            return true;
+        });
+    } else {
+        _stateStartTime = now;
+        updateUIState(SYS_WAIT_SETTLE);
+    }
+}
+
+void AppProduction::handleWaitSettleState(unsigned long now) {
+    if (now - _stateStartTime >= DISCHARGE_SETTLE_MS) {
+        _conveyor->collectFromUnits();
+        _stateStartTime = now;
+        updateUIState(SYS_TRANSFER_B1);
+    }
+}
+
+void AppProduction::handleTransferState(unsigned long now) {
+    if (now - _stateStartTime >= BELT_COLLECT_PERIOD_MS) {
+        _conveyor->advanceOutput();
+        _stateStartTime = now;
+        updateUIState(SYS_STEPPING_B2);
+    }
+}
+
+void AppProduction::handleSteppingState(unsigned long now) {
+    if (now - _stateStartTime >= BELT_STEP_PERIOD_MS) {
+        updateUIState(SYS_READY);
+    }
+}
+
+/**
+ * @brief 界面反馈更新 (UI 与 逻辑解耦的桥梁)
+ */
+void AppProduction::updateUIState(SystemStatus status, uint32_t mask, float weight) {
+    xSemaphoreTake(_mutex, portMAX_DELAY);
+    _ctx->prog.sysStatus = status;
+    
+    // 逻辑层决定文案，解耦 UI 与内部状态映射
+    switch (status) {
+        case SYS_READY:       strncpy(_ctx->prog.statusText, "就绪", 32); break;
+        case SYS_DISCHARGING: strncpy(_ctx->prog.statusText, "下料中...", 32); break;
+        case SYS_WAIT_SETTLE: strncpy(_ctx->prog.statusText, "下料沉降中", 32); break;
+        case SYS_TRANSFER_B1: strncpy(_ctx->prog.statusText, "收集传送中", 32); break;
+        case SYS_STEPPING_B2: strncpy(_ctx->prog.statusText, "步进输出中", 32); break;
+        default:              strncpy(_ctx->prog.statusText, "初始化", 32); break;
+    }
+
+    if (mask != 0 || status == SYS_TRANSFER_B1 || status == SYS_READY) {
+        _ctx->prog.idMask = mask;
+    }
+    
+    if (weight > 0.0f) {
+        _ctx->prog.batchWeight = weight;
+        _ctx->config.accumulatedWeight += weight;
+        saveParams(); // 生产数据落盘
+    }
+    xSemaphoreGive(_mutex);
+}
+
 
 void AppProduction::handlePolling() {
     uint8_t nextId = _currentPollId;

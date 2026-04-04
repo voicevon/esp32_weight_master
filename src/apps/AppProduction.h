@@ -43,8 +43,21 @@ private:
     Preferences         _nvs;
     unsigned long       _lastCalcTime = 0;
     uint8_t             _currentPollId = 1;
+    
+    // 异步状态机变量
+    unsigned long       _stateStartTime = 0;
+    std::vector<int>    _selectedIds;
+    int                 _dischargeIndex = 0;
+    float               _lastCombinedWeight = 0;
 
     void handlePolling();
+    void handleReadyState(unsigned long now);
+    void handleDropState(unsigned long now);
+    void handleSettleState(unsigned long now);
+    void handleBeltAState(unsigned long now);
+    void handleBeltBState(unsigned long now);
+
+    void updateUIState(SystemStatus status, uint32_t mask = 0, float weight = 0.0f);
     void loadParams();
     void saveParams();
 };

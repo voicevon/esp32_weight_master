@@ -660,29 +660,23 @@ void UIManager::updateDashboard(const SystemContext* ctx) {
             lv_obj_set_style_text_color(status_label, lv_color_hex(0x8B5CF6), 0);
         }
     } else {
-        // 状态更新逻辑 (简单 Dirty Check)
+        // 状态更新逻辑 (由逻辑层决定显示文案，UI 仅负责渲染与视觉反馈)
         static SystemStatus lastStatus = (SystemStatus)-1;
         if (_isFirstUpdate || ctx->prog.sysStatus != lastStatus || modeChanged) {
             lastStatus = ctx->prog.sysStatus;
-            switch (ctx->prog.sysStatus) {
-                case SYS_READY: 
-                    lv_label_set_text(status_label, "就绪"); 
-                    lv_obj_set_style_text_color(status_label, lv_color_hex(0x22C55E), 0);
-                    break;
-                case SYS_DISCHARGING: 
-                    lv_label_set_text(status_label, "落料中...");
-                    lv_obj_set_style_text_color(status_label, lv_color_hex(0xFBBF24), 0);
-                    break;
-                case SYS_TRANSFER_B1: 
-                case SYS_STEPPING_B2: 
-                    lv_label_set_text(status_label, "输送中"); 
-                    lv_obj_set_style_text_color(status_label, lv_color_hex(0x38BDF8), 0);
-                    break;
-                default: 
-                    lv_label_set_text(status_label, "初始化/未知"); 
-                    lv_obj_set_style_text_color(status_label, lv_color_hex(0x94A3B8), 0);
-                    break;
+            
+            // 直接渲染逻辑层下发的文案
+            lv_label_set_text(status_label, ctx->prog.statusText);
+            
+            // 基础视觉反馈配色
+            uint32_t color = 0x22C55E; // 默认：绿色 (就绪)
+            if (ctx->prog.sysStatus == SYS_DISCHARGING || ctx->prog.sysStatus == SYS_WAIT_SETTLE) {
+                color = 0xFBBF24; // 琥珀色：操作中
+            } else if (ctx->prog.sysStatus == SYS_TRANSFER_B1 || ctx->prog.sysStatus == SYS_STEPPING_B2) {
+                color = 0x38BDF8; // 天蓝色：机械运行
             }
+            
+            lv_obj_set_style_text_color(status_label, lv_color_hex(color), 0);
         }
     }
 

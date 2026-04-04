@@ -40,9 +40,10 @@ enum UIState {
 enum SystemStatus {
     SYS_INIT,          // 初始化中
     SYS_READY,         // 准备就绪
-    SYS_DISCHARGING,   // 下料中
-    SYS_TRANSFER_B1,   // 级联传送中 (B1)
-    SYS_STEPPING_B2    // 步进传送中 (B2)
+    SYS_SEQ_DROP,      // 逐个下料中
+    SYS_SETTLE_STABLE, // 沉降稳定中
+    SYS_BELT_A,        // 皮带 A 运行中
+    SYS_BELT_B         // 皮带 B 步进中
 };
 
 /**
@@ -71,6 +72,7 @@ struct ProductionParams {
  */
 struct WSProductionState {
     SystemStatus sysStatus;       // READY, DISCHARGING...
+    char         statusText[32];  // 用于 UI 显示的动态文案
     float        batchWeight;     // 最近成功的组合重量
     uint32_t     idMask;          // 下料掩码
 };
