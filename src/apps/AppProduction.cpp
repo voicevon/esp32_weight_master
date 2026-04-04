@@ -5,10 +5,10 @@
 #include "logic/PollManager.h"
 #include "drivers/ModbusMaster.h"
 #include "logic/CombinationEngine.h"
-#include "logic/ConveyorController.h"
+#include "logic/BeltManager.h"
 
 AppProduction::AppProduction(SystemContext* ctx, PollManager* pollMgr, ModbusMaster* rs485,
-                             CombinationEngine* engine, ConveyorController* conveyor,
+                             CombinationEngine* engine, BeltManager* conveyor,
                              SemaphoreHandle_t mutex)
     : _ctx(ctx), _pollMgr(pollMgr), _rs485(rs485), _engine(engine), _conveyor(conveyor), _mutex(mutex)
 {

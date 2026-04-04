@@ -43,6 +43,11 @@ public:
     bool asyncRead(uint8_t id, uint16_t addr, uint16_t count, cbTransaction cb, uint16_t* destBuffer);
     
     /**
+     * @brief 异步写入单个寄存器 (0x06)
+     */
+    bool asyncWrite(uint8_t id, uint16_t addr, uint16_t value, cbTransaction cb);
+    
+    /**
      * @brief 同步写入单个寄存器 (0x06)
      */
     bool syncWrite(uint8_t id, uint16_t addr, uint16_t value);

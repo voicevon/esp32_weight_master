@@ -102,6 +102,34 @@ bool ModbusMaster::asyncRead(uint8_t id, uint16_t addr, uint16_t count, cbTransa
     return true;
 }
 
+bool ModbusMaster::asyncWrite(uint8_t id, uint16_t addr, uint16_t value, cbTransaction cb) {
+    if (xSemaphoreTake(_mutexBus, pdMS_TO_TICKS(10)) != pdTRUE) return false;
+    if (_status != ST_IDLE && _status != ST_SUCCESS && _status != ST_TIMEOUT && _status != ST_ERROR) {
+        xSemaphoreGive(_mutexBus);
+        return false;
+    }
+
+    _lastTid = id; 
+    _pendingCb   = cb;
+    _pendingData = nullptr; // 写指令不需要目标缓冲区
+    _status      = ST_WAITING;
+    _lastPollTime = millis();
+    _packetsSent++;
+
+    _txBuf[0] = id;
+    _txBuf[1] = 0x06;
+    _txBuf[2] = addr >> 8;
+    _txBuf[3] = addr & 0xFF;
+    _txBuf[4] = value >> 8;
+    _txBuf[5] = value & 0xFF;
+    
+    while(Serial1.available()) Serial1.read();
+    sendPacket(_txBuf, 6);
+    
+    xSemaphoreGive(_mutexBus);
+    return true;
+}
+
 bool ModbusMaster::syncWrite(uint8_t id, uint16_t addr, uint16_t value) {
     if (xSemaphoreTake(_mutexBus, pdMS_TO_TICKS(500)) != pdTRUE) return false;
     
@@ -180,9 +208,17 @@ void ModbusMaster::modbusTask(void* param) {
                             }
                             instance->_status = ST_SUCCESS;
                         } else if (fn == 0x06) { // 写回复 (Echo)
+                            if (instance->_pendingCb) {
+                                instance->_pendingCb(Modbus::EX_SUCCESS, instance->_lastTid, nullptr);
+                                instance->_pendingCb = nullptr;
+                            }
                             instance->_status = ST_SUCCESS;
                         }
                     } else {
+                        if (instance->_pendingCb) {
+                            instance->_pendingCb(Modbus::EX_ERROR, instance->_lastTid, nullptr);
+                            instance->_pendingCb = nullptr;
+                        }
                         instance->_status = ST_ERROR;
                     }
                 } else {

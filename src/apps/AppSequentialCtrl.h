@@ -26,6 +26,7 @@ public:
         if (_pendingAction == ACT_GLOBAL_TARE) {
             _step = 0;
             _progress = 0;
+            _state = STATE_SENDING;
             Serial.println("[AppSequentialCtrl] Starting Global Tare Sequence...");
         }
     }
@@ -35,7 +36,7 @@ public:
 
         unsigned long now = millis();
         if (_pendingAction == ACT_GLOBAL_TARE) {
-            handleGlobalTare(now);
+            handleGlobalTareStateMachine(now);
         }
     }
 
@@ -55,35 +56,77 @@ public:
 
 private:
     enum Action { ACT_NONE, ACT_GLOBAL_TARE };
+    enum State  { STATE_IDLE, STATE_SENDING, STATE_WAITING, STATE_NEXT, STATE_FINISH };
     
     SystemContext*    _ctx;
     ModbusMaster*     _rs485;
     PollManager*      _pollMgr;
     SemaphoreHandle_t _mutex;
 
-    Action        _pendingAction = ACT_NONE;
-    int           _step = 0;
-    int           _progress = 0;
-    unsigned long _startTime = 0;
-    unsigned long _lastStepTime = 0;
-    bool          _isFinished = false;
+    Action             _pendingAction = ACT_NONE;
+    State              _state = STATE_IDLE;
+    Modbus::ResultCode _lastResult = Modbus::EX_SUCCESS;
+    int                _step = 0;
+    int                _progress = 0;
+    unsigned long      _startTime = 0;
+    bool               _isFinished = false;
 
-    void handleGlobalTare(unsigned long now) {
-        // 每 100ms 执行一个节点的置零，确保总线不冲突
-        if (now - _lastStepTime < 100) return;
-        _lastStepTime = now;
+    void handleGlobalTareStateMachine(unsigned long now) {
+        switch (_state) {
+            case STATE_SENDING: {
+                int nodeId = _step + 1;
+                if (nodeId <= 20) {
+                    if (_pollMgr->isWhitelisted(nodeId)) {
+                        Serial.printf("[AppSequentialCtrl] Taring Node %d...\n", nodeId);
+                        
+                        // 使用 asyncWrite 代替阻塞的 syncWrite
+                        bool sent = _rs485->asyncWrite(nodeId, 0x0100, 3, 
+                            [this](Modbus::ResultCode res, uint16_t tid, void* data) {
+                                this->_lastResult = res;
+                                this->_state = STATE_NEXT;
+                                return true;
+                            }
+                        );
 
-        int nodeId = _step + 1;
-        if (nodeId <= 20) {
-            if (_pollMgr->isWhitelisted(nodeId)) {
-                _rs485->syncWrite(nodeId, 0x0100, 3); // 3 = Tare command
+                        if (sent) {
+                            _state = STATE_WAITING;
+                        } else {
+                            // 总线忙（正在处理其他请求），本轮 Loop 略过，等待下一次循环重试
+                        }
+                    } else {
+                        // 跳过非白名单节点，进度继续增加
+                        _step++;
+                        _progress = (_step * 100) / 20;
+                    }
+                } else {
+                    _state = STATE_FINISH;
+                }
+                break;
             }
-            _step++;
-            _progress = (_step * 100) / 20;
-        } else {
-            _isFinished = true;
-            _progress = 100;
-            Serial.println("[AppSequentialCtrl] Global Tare Sequence Completed.");
+
+            case STATE_WAITING:
+                // 底层驱动有自己的超时机制（2秒），此处无需额外超时
+                // 回调函数接收到响应后，会将状态改为 STATE_NEXT
+                break;
+
+            case STATE_NEXT:
+                if (_lastResult != Modbus::EX_SUCCESS) {
+                    Serial.printf("[AppSequentialCtrl] Node %d Tare Failed: 0x%02X (Skipping)\n", _step + 1, _lastResult);
+                }
+                _step++;
+                _progress = (_step * 100) / 20;
+                _state = STATE_SENDING;
+                break;
+
+            case STATE_FINISH:
+                _isFinished = true;
+                _progress = 100;
+                _state = STATE_IDLE;
+                Serial.println("[AppSequentialCtrl] Global Tare Sequence Completed.");
+                break;
+            
+            default:
+                break;
         }
     }
 };

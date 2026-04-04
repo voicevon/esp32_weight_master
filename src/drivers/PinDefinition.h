@@ -3,7 +3,7 @@
 
 /* 
  * ESP32-S3 Weight Master - 硬件引脚与寄存器统一定义
- * 本文件管理业务层的引脚常量。LCD 和 Touch 的引脚归 HardwareManager 管。
+ * 本文件管理业务层的引脚常量。LCD 和 Touch 的引脚归 TouchScreen 管。
  */
 
 // --- RS485 通信 (Serial 1/2) ---

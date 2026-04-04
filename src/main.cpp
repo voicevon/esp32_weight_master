@@ -4,13 +4,10 @@
  */
 
 #include <Arduino.h>
-#include "drivers/HardwareManager.h"
-#include "ui/UIManager.h"
-#include "drivers/ModbusMaster.h"
+#include "drivers/TouchScreen.h"
 #include "drivers/PinDefinition.h"
 #include "logic/CombinationEngine.h"
-#include "logic/ConveyorController.h"
-#include "logic/PollManager.h"
+#include "logic/BeltManager.h"
 
 // Apps
 #include "apps/AppDispatcher.h"
@@ -23,14 +20,14 @@
 SystemContext      sysCtx;
 
 // --- 驱动层 ---
-HardwareManager    hw;
+TouchScreen        hw;
 UIManager          ui;
 ModbusMaster       rs485(PIN_RS485_RX, PIN_RS485_TX, PIN_RS485_TX_EN, RS485_BAUD);
 
 // --- 业务层 ---
 PollManager        pollManager(&rs485);
 CombinationEngine  engine(290.0f, 310.0f);
-ConveyorController conveyor(&rs485, MOTOR_ID_BELT1, MOTOR_ID_BELT2);
+BeltManager        conveyor(&rs485, MOTOR_ID_BELT1, MOTOR_ID_BELT2);
 
 // --- 核心调度器 ---
 AppDispatcher      dispatcher(&sysCtx, &rs485, &pollManager, &ui);

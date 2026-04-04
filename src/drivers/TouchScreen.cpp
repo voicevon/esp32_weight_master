@@ -1,4 +1,4 @@
-#include "HardwareManager.h"
+#include "TouchScreen.h"
 #include <Wire.h>
 
 /* --- Hardware Pins (Waveshare ESP32-S3-Touch-LCD-7) --- */
@@ -29,25 +29,27 @@
 #define TOUCH_SDA  8
 #define TOUCH_SCL  9
 
-/* --- Static Storage --- */
-Arduino_ESP32RGBPanel* HardwareManager::rgbpanel = new Arduino_ESP32RGBPanel(
+/* --- 静态成员存储 --- */
+Arduino_ESP32RGBPanel* TouchScreen::rgbpanel = new Arduino_ESP32RGBPanel(
     LCD_DE, LCD_VSYNC, LCD_HSYNC, LCD_PCLK,
     LCD_R0, LCD_R1, LCD_R2, LCD_R3, LCD_R4,
     LCD_G0, LCD_G1, LCD_G2, LCD_G3, LCD_G4, LCD_G5,
     LCD_B0, LCD_B1, LCD_B2, LCD_B3, LCD_B4,
     1, 10, 8, 10, 1, 10, 8, 10, 1, 16000000L
 );
-Arduino_RGB_Display* HardwareManager::gfx = new Arduino_RGB_Display(
-    HardwareManager::screenWidth, HardwareManager::screenHeight, HardwareManager::rgbpanel
+
+Arduino_RGB_Display* TouchScreen::gfx = new Arduino_RGB_Display(
+    TouchScreen::screenWidth, TouchScreen::screenHeight, TouchScreen::rgbpanel
 );
-uint8_t HardwareManager::current_touch_addr = 0x5D;
 
-HardwareManager::HardwareManager() {}
+uint8_t TouchScreen::current_touch_addr = 0x5D;
 
-bool HardwareManager::begin() {
-    Serial.println("[HW] Starting Hardware Initialization...");
+TouchScreen::TouchScreen() {}
+
+bool TouchScreen::begin() {
+    Serial.println("[HW] Starting TouchScreen Initialization...");
     
-    // I2C 100kHz for stability
+    // I2C 100kHz for stability (符合 waveshare-s3-touch-expert 最佳实践)
     Wire.begin(TOUCH_SDA, TOUCH_SCL);
     Wire.setClock(100000); 
 
@@ -81,7 +83,7 @@ bool HardwareManager::begin() {
     }
 }
 
-void HardwareManager::lvglInit() {
+void TouchScreen::lvglInit() {
     lv_init();
 
     // Draw buffer
@@ -106,7 +108,7 @@ void HardwareManager::lvglInit() {
     lv_indev_drv_register(&indev_drv);
 }
 
-void HardwareManager::resetTouch() {
+void TouchScreen::resetTouch() {
     pinMode(TOUCH_INT, OUTPUT);
     digitalWrite(TOUCH_INT, LOW); 
     delay(10);
@@ -117,13 +119,13 @@ void HardwareManager::resetTouch() {
     pinMode(TOUCH_INT, INPUT); 
 }
 
-void HardwareManager::writeCH422G(byte addr, byte val) {
+void TouchScreen::writeCH422G(byte addr, byte val) {
     Wire.beginTransmission(addr);
     Wire.write(val);
     Wire.endTransmission();
 }
 
-void HardwareManager::writeReg8(uint16_t reg, uint8_t val) {
+void TouchScreen::writeReg8(uint16_t reg, uint8_t val) {
     Wire.beginTransmission(current_touch_addr);
     Wire.write(reg >> 8);
     Wire.write(reg & 0xFF);
@@ -131,7 +133,7 @@ void HardwareManager::writeReg8(uint16_t reg, uint8_t val) {
     Wire.endTransmission();
 }
 
-uint8_t HardwareManager::readReg8(uint16_t reg) {
+uint8_t TouchScreen::readReg8(uint16_t reg) {
     Wire.beginTransmission(current_touch_addr);
     Wire.write(reg >> 8);
     Wire.write(reg & 0xFF);
@@ -140,19 +142,15 @@ uint8_t HardwareManager::readReg8(uint16_t reg) {
     return Wire.available() ? Wire.read() : 0xFF;
 }
 
-void HardwareManager::disp_flush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color_p) {
+void TouchScreen::disp_flush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color_p) {
     uint32_t w = (area->x2 - area->x1 + 1);
     uint32_t h = (area->y2 - area->y1 + 1);
     gfx->draw16bitRGBBitmap(area->x1, area->y1, (uint16_t *)&color_p->full, w, h);
     lv_disp_flush_ready(disp);
 }
 
-void HardwareManager::touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data) {
-    HardwareManager* self = (HardwareManager*)indev_driver->user_data; 
-    // We didn't set user_data, but since it's static maybe we can just use static methods
-    // Let's implement it carefully.
-    
-    // Read individual registers for status
+void TouchScreen::touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data) {
+    // Read status
     Wire.beginTransmission(current_touch_addr);
     Wire.write(0x81); Wire.write(0x4E);
     if (Wire.endTransmission() != 0) return;

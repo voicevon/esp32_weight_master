@@ -1,21 +1,26 @@
-#ifndef HARDWARE_MANAGER_H
-#define HARDWARE_MANAGER_H
+#ifndef TOUCH_SCREEN_H
+#define TOUCH_SCREEN_H
 
 #include <Arduino.h>
 #include <Arduino_GFX_Library.h>
 #include <lvgl.h>
 
-class HardwareManager {
+/**
+ * @class TouchScreen
+ * @brief Waveshare 7" ESP32-S3-Touch 屏显与触摸驱动管理类。
+ * 封装了 RGB LCD 驱动 (Arduino_GFX) 和 GT911 触摸控制逻辑。
+ */
+class TouchScreen {
 public:
-    HardwareManager();
+    TouchScreen();
     bool begin();
     void lvglInit();
 
-    // LVGL Callbacks (Static to be used as function pointers)
+    // LVGL 回调 (Static)
     static void disp_flush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color_p);
     static void touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data);
 
-    // Hardware Constants
+    // 硬件分辨率常量
     static constexpr uint16_t screenWidth  = 800;
     static constexpr uint16_t screenHeight = 480;
 
@@ -31,4 +36,4 @@ private:
     static uint8_t current_touch_addr;
 };
 
-#endif
+#endif // TOUCH_SCREEN_H
