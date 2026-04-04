@@ -669,11 +669,11 @@ void UIManager::updateDashboard(const SystemContext* ctx) {
             lv_label_set_text(status_label, ctx->prog.statusText);
             
             // 基础视觉反馈配色
-            uint32_t color = 0x22C55E; // 默认：绿色 (就绪)
-            if (ctx->prog.sysStatus == SYS_DISCHARGING || ctx->prog.sysStatus == SYS_WAIT_SETTLE) {
-                color = 0xFBBF24; // 琥珀色：操作中
-            } else if (ctx->prog.sysStatus == SYS_TRANSFER_B1 || ctx->prog.sysStatus == SYS_STEPPING_B2) {
-                color = 0x38BDF8; // 天蓝色：机械运行
+            uint32_t color = 0x22C55E; // 默认：绿色 (就绪数据稳定)
+            if (ctx->prog.sysStatus == SYS_SEQ_DROP || ctx->prog.sysStatus == SYS_SETTLE_STABLE) {
+                color = 0xFBBF24; // 琥珀色：落料与沉降中
+            } else if (ctx->prog.sysStatus == SYS_BELT_A || ctx->prog.sysStatus == SYS_BELT_B) {
+                color = 0x38BDF8; // 天蓝色：机械传送运行
             }
             
             lv_obj_set_style_text_color(status_label, lv_color_hex(color), 0);

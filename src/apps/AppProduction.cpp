@@ -33,7 +33,7 @@ void AppProduction::onLoop() {
     xSemaphoreGive(_mutex);
 
     // 1. 动态轮询控制：在就绪及皮带运转期间刷新数据，提高系统吞吐率
-    if (currentStatus == SYS_READY || currentStatus == SYS_TRANSFER_B1 || currentStatus == SYS_STEPPING_B2) {
+    if (currentStatus == SYS_READY || currentStatus == SYS_BELT_A || currentStatus == SYS_BELT_B) {
         handlePolling();
     }
 
@@ -43,20 +43,20 @@ void AppProduction::onLoop() {
             handleReadyState(now);
             break;
 
-        case SYS_DISCHARGING:
-            handleDischargeState(now);
+        case SYS_SEQ_DROP:
+            handleDropState(now);
             break;
 
-        case SYS_WAIT_SETTLE:
-            handleWaitSettleState(now);
+        case SYS_SETTLE_STABLE:
+            handleSettleState(now);
             break;
 
-        case SYS_TRANSFER_B1:
-            handleTransferState(now);
+        case SYS_BELT_A:
+            handleBeltAState(now);
             break;
 
-        case SYS_STEPPING_B2:
-            handleSteppingState(now);
+        case SYS_BELT_B:
+            handleBeltBState(now);
             break;
 
         default:
@@ -107,11 +107,11 @@ void AppProduction::handleReadyState(unsigned long now) {
     
     _dischargeIndex = 0;
     _lastCombinedWeight = res.totalWeight;
-    updateUIState(SYS_DISCHARGING, mask, res.totalWeight);
+    updateUIState(SYS_SEQ_DROP, mask, res.totalWeight);
     Serial.printf("[AppProduction] Combined: %.1f g, Mask: 0x%08X\n", res.totalWeight, mask);
 }
 
-void AppProduction::handleDischargeState(unsigned long now) {
+void AppProduction::handleDropState(unsigned long now) {
     // 异步逐个分发下料指令
     if (_dischargeIndex < (int)_selectedIds.size()) {
         int nodeId = _selectedIds[_dischargeIndex];
@@ -121,27 +121,27 @@ void AppProduction::handleDischargeState(unsigned long now) {
         });
     } else {
         _stateStartTime = now;
-        updateUIState(SYS_WAIT_SETTLE);
+        updateUIState(SYS_SETTLE_STABLE);
     }
 }
 
-void AppProduction::handleWaitSettleState(unsigned long now) {
+void AppProduction::handleSettleState(unsigned long now) {
     if (now - _stateStartTime >= DISCHARGE_SETTLE_MS) {
         _conveyor->collectFromUnits();
         _stateStartTime = now;
-        updateUIState(SYS_TRANSFER_B1);
+        updateUIState(SYS_BELT_A);
     }
 }
 
-void AppProduction::handleTransferState(unsigned long now) {
+void AppProduction::handleBeltAState(unsigned long now) {
     if (now - _stateStartTime >= BELT_COLLECT_PERIOD_MS) {
         _conveyor->advanceOutput();
         _stateStartTime = now;
-        updateUIState(SYS_STEPPING_B2);
+        updateUIState(SYS_BELT_B);
     }
 }
 
-void AppProduction::handleSteppingState(unsigned long now) {
+void AppProduction::handleBeltBState(unsigned long now) {
     if (now - _stateStartTime >= BELT_STEP_PERIOD_MS) {
         updateUIState(SYS_READY);
     }
@@ -156,15 +156,15 @@ void AppProduction::updateUIState(SystemStatus status, uint32_t mask, float weig
     
     // 逻辑层决定文案，解耦 UI 与内部状态映射
     switch (status) {
-        case SYS_READY:       strncpy(_ctx->prog.statusText, "就绪", 32); break;
-        case SYS_DISCHARGING: strncpy(_ctx->prog.statusText, "下料中...", 32); break;
-        case SYS_WAIT_SETTLE: strncpy(_ctx->prog.statusText, "下料沉降中", 32); break;
-        case SYS_TRANSFER_B1: strncpy(_ctx->prog.statusText, "收集传送中", 32); break;
-        case SYS_STEPPING_B2: strncpy(_ctx->prog.statusText, "步进输出中", 32); break;
-        default:              strncpy(_ctx->prog.statusText, "初始化", 32); break;
+        case SYS_READY:         strncpy(_ctx->prog.statusText, "就绪", 32); break;
+        case SYS_SEQ_DROP:      strncpy(_ctx->prog.statusText, "逐个下料中", 32); break;
+        case SYS_SETTLE_STABLE: strncpy(_ctx->prog.statusText, "沉降稳定中", 32); break;
+        case SYS_BELT_A:        strncpy(_ctx->prog.statusText, "收集皮带运行", 32); break;
+        case SYS_BELT_B:        strncpy(_ctx->prog.statusText, "步进输出运行", 32); break;
+        default:                strncpy(_ctx->prog.statusText, "初始化", 32); break;
     }
 
-    if (mask != 0 || status == SYS_TRANSFER_B1 || status == SYS_READY) {
+    if (mask != 0 || status == SYS_BELT_A || status == SYS_READY) {
         _ctx->prog.idMask = mask;
     }
     
