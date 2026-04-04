@@ -13,7 +13,7 @@ enum OperationMode {
     MODE_DIAG_DETAIL,   // 诊断：节点详情查看
     MODE_CONFIGURATION, // 配置模式
     MODE_SEQUENTIAL_CTRL, // 序列化控制模式 (开/关/置零)
-    MODE_ABOUT          // 关于界面
+    MODE_ABOUT           // 关于界面
 };
 
 /**
@@ -51,6 +51,49 @@ enum NodeStatus {
     NODE_DISCHARGING,  // 下料中：出料指令已发送
     NODE_DIRTY,        // 脏数据：下料结束，缓存仍为旧重，严禁参与组合
     NODE_REFRESHING    // 刷新中：已读回第1个新重量，等待稳定
+};
+
+/**
+ * @brief 系统生产设置 (持久化参数)
+ */
+struct ProductionParams {
+    float targetMin;
+    float targetMax;
+    float accumulatedWeight;
+    bool  isProductionEnabled;
+};
+
+/**
+ * @brief 生产运行动态 (非持久化)
+ */
+struct ProductionState {
+    SystemStatus status;          // READY, DISCHARGING...
+    float        lastBatchWeight; // 最近成功的组合重量
+    uint32_t     selectionMask;   // 下料掩码
+};
+
+/**
+ * @brief 诊断与全系统扫描数据
+ */
+struct DiagContext {
+    int     scanProgress;      // 0-20
+    int     currentScanCycle;  // 0-4
+    bool    scanResults[5][21]; // 1-based id index -> size 21
+    uint8_t diagLastSent;
+    char    diagRxHex[128];
+};
+
+/**
+ * @brief UI 渲染快照 (无锁副本，由 uiLoop 填充)
+ */
+struct UISnapshot {
+    OperationMode curMode;
+    float         currentWeights[21]; // 1-20
+    bool          stableNodes[21];
+    bool          onlineNodes[21];
+    bool          whitelistedNodes[21];
+    float         stableWeightSum;    // 已稳总重 (白名单内在线稳节点)
+    float         unstableWeightSum;  // 未稳总值 (白名单内在线非稳节点)
 };
 
 #endif

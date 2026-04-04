@@ -18,7 +18,7 @@ public:
 private:
     ModbusMaster* _rs485;
     int _id1, _id2;
-    long _currentPos1, _currentPos2;
+    uint32_t _currentPos1, _currentPos2;
 };
 
 #endif
