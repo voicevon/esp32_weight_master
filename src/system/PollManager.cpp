@@ -83,8 +83,6 @@ void PollManager::handleProductionPoll() {
             int onlineCount = 0;
             for (int i = 1; i <= 20; i++) if (_nodes[i].online && _nodes[i].whitelisted) onlineCount++;
             
-            Serial.printf("[POLL_SUMMARY] Cycle: %lu ms, Whitelisted: %d, Online: %d, Unstable: %d\n", 
-                          duration, _whitelistedInCycle, onlineCount, getUnstableCount());
             _processedInCycle = 0; 
         }
     }

@@ -179,21 +179,14 @@ void ModbusMaster::modbusTask(void* param) {
                                 instance->_pendingCb = nullptr;
                             }
                             instance->_status = ST_SUCCESS;
-                            Serial.printf("[MB_DIAG] SUCCESS ID:%d, Latency:%lu ms, Total:%lu ms\n", 
-                                          instance->_lastTid, latency, totalDuration);
                         } else if (fn == 0x06) { // 写回复 (Echo)
                             instance->_status = ST_SUCCESS;
-                            Serial.printf("[MB_DIAG] WRITE SUCCESS ID:%d, Latency:%lu ms\n", 
-                                          instance->_lastTid, latency);
                         }
                     } else {
                         instance->_status = ST_ERROR;
-                        Serial.printf("[MB_DIAG] CRC ERROR ID:%d, Latency:%lu ms, Recv:%d bytes\n", 
-                                      instance->_lastTid, latency, idx);
                     }
                 } else {
-                    Serial.printf("[MB_DIAG] SHORT FRAME ID:%d, Latency:%lu ms, Recv:%d bytes\n", 
-                                  instance->_lastTid, latency, idx);
+                    // Short frame log removed
                 }
             } else if (millis() - instance->_lastPollTime > 2000) { // 放宽到 2s
                 if (instance->_pendingCb) {
@@ -202,8 +195,6 @@ void ModbusMaster::modbusTask(void* param) {
                 }
                 instance->_status = ST_TIMEOUT;
                 instance->_packetsDropped++;
-                Serial.printf("[MB_DIAG] TIMEOUT ID:%d after %lu ms\n", 
-                              instance->_lastTid, millis() - instance->_lastPollTime);
             }
         }
         vTaskDelay(pdMS_TO_TICKS(5));

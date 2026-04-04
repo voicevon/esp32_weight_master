@@ -13,7 +13,17 @@
 // =============================================================================
 
 void AppController::cmdGlobalTare() {
-    _rs485->broadcastWrite(0x0100, CMD_TARE);
+    Serial.println("[CMD] Starting Global Tare (Sequential)...");
+    for (int i = 1; i <= 20; i++) {
+        if (_pollMgr->isOnline(i)) {
+            Serial.printf("[CMD] Taring Node %d...\n", i);
+            bool ok = _rs485->syncWrite(i, 0x0100, CMD_TARE);
+            if (ok) Serial.printf("[CMD] Node %d: Tare SUCCESS\n", i);
+            else   Serial.printf("[CMD] Node %d: Tare FAILED (Timeout)\n", i);
+            vTaskDelay(pdMS_TO_TICKS(20)); // 总线间隔
+        }
+    }
+    Serial.println("[CMD] Global Tare Finished.");
 }
 
 void AppController::cmdStartScan() {
@@ -307,10 +317,6 @@ void AppController::uiLoop() {
         frameCount++;
 
         if (frameCount >= 100) {
-            Serial.printf("[PERF] UI 100-Frame Avg: Logic %.1f ms, Render %.1f ms, FPS %.1f\n",
-                          (float)totalLogicMs / 100.0f,
-                          (float)totalRenderMs / 100.0f,
-                          1000.0f / ((float)(totalLogicMs + totalRenderMs) / 100.04f + 33.0f));
             frameCount = 0;
             totalLogicMs = 0;
             totalRenderMs = 0;
