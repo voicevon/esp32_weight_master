@@ -111,6 +111,16 @@ static void servo_test_event_cb(lv_event_t * e) {
     }
 }
 
+static void btn_global_open_cb(lv_event_t * e) {
+    UIManager* ui = (UIManager*)lv_event_get_user_data(e);
+    if (ui && ui->getBus()) ui->getBus()->cmdGlobalServo(true);
+}
+
+static void btn_global_close_cb(lv_event_t * e) {
+    UIManager* ui = (UIManager*)lv_event_get_user_data(e);
+    if (ui && ui->getBus()) ui->getBus()->cmdGlobalServo(false);
+}
+
 static void scan_confirm_btn_cb(lv_event_t * e) {
     UIManager * ui = (UIManager*)lv_event_get_user_data(e);
     if(ui) ui->deleteScanModal();
@@ -398,6 +408,32 @@ void UIManager::buildAdminView(lv_obj_t* parent) {
     lv_obj_set_style_text_color(servo_title, lv_color_white(), 0);
     lv_label_set_text(servo_title, "舵机维护测试 (1-20 号机 / 乒乓开关)");
     lv_obj_set_style_pad_top(servo_title, 15, 0);
+
+    lv_obj_t* global_btn_row = lv_obj_create(parent);
+    lv_obj_set_size(global_btn_row, 700, 60);
+    lv_obj_set_style_bg_opa(global_btn_row, 0, 0);
+    lv_obj_set_style_border_width(global_btn_row, 0, 0);
+    lv_obj_set_flex_flow(global_btn_row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(global_btn_row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_gap(global_btn_row, 20, 0);
+
+    lv_obj_t* btn_all_open = lv_btn_create(global_btn_row);
+    lv_obj_set_size(btn_all_open, 140, 40);
+    lv_obj_set_style_bg_color(btn_all_open, lv_color_hex(0x22C55E), 0);
+    lv_obj_add_event_cb(btn_all_open, btn_global_open_cb, LV_EVENT_CLICKED, this);
+    lv_obj_t* lbl_open = lv_label_create(btn_all_open);
+    lv_obj_set_style_text_font(lbl_open, &ui_font_chs_16, 0);
+    lv_label_set_text(lbl_open, "全场开放");
+    lv_obj_center(lbl_open);
+
+    lv_obj_t* btn_all_close = lv_btn_create(global_btn_row);
+    lv_obj_set_size(btn_all_close, 140, 40);
+    lv_obj_set_style_bg_color(btn_all_close, lv_color_hex(0xA855F7), 0);
+    lv_obj_add_event_cb(btn_all_close, btn_global_close_cb, LV_EVENT_CLICKED, this);
+    lv_obj_t* lbl_close = lv_label_create(btn_all_close);
+    lv_obj_set_style_text_font(lbl_close, &ui_font_chs_16, 0);
+    lv_label_set_text(lbl_close, "全场关闭");
+    lv_obj_center(lbl_close);
 
     lv_obj_t* servo_panel = lv_obj_create(parent);
     lv_obj_set_size(servo_panel, 740, 120);

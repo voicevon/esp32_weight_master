@@ -30,6 +30,7 @@ public:
     void cmdStartScan() override;
     void cmdToggleDiagnosis(bool active) override;
     void cmdServoTest(int id, bool open) override;
+    void cmdGlobalServo(bool open) override;
     void cmdClearAccumulated() override;
     void cmdUpdateTargets(float dMin, float dMax) override;
 

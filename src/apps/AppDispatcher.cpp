@@ -50,6 +50,14 @@ void AppDispatcher::cmdGlobalTare() {
     }
 }
 
+void AppDispatcher::cmdGlobalServo(bool open) {
+    auto app = findApp(MODE_SEQUENTIAL_CTRL);
+    if (app) {
+        static_cast<AppSequentialCtrl*>(app)->triggerGlobalServo(open);
+        updateOperationMode(MODE_SEQUENTIAL_CTRL);
+    }
+}
+
 void AppDispatcher::cmdStartScan() {
     updateOperationMode(MODE_DIAG_SCAN);
 }
