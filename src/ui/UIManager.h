@@ -24,9 +24,10 @@ public:
     void setCommandBus(ICommandBus* bus) { _bus = bus; }
     ICommandBus* getBus() const { return _bus; }
     lv_obj_t* getServoBtn(int id) { return (id >= 1 && id <= 20) ? servo_btns[id] : nullptr; }
+    void showTargetBottomSheet();
+    void closeTargetBottomSheet();
 
 private:
-    void buildUserSettingsView(lv_obj_t* parent);
     void buildDashboardView(lv_obj_t* parent);
     void buildScanModal();
     void updateScanModal(const SystemContext* ctx);
@@ -34,8 +35,11 @@ private:
     // --- Tabs ---
     lv_obj_t* tabview = nullptr;
     lv_obj_t* dashboard_tab = nullptr;
-    lv_obj_t* user_tab = nullptr;
     lv_obj_t* admin_tab = nullptr;
+    lv_obj_t* about_tab = nullptr;
+
+    // --- About Section ---
+    void buildAboutView(lv_obj_t* parent);
 
     // --- Components ---
     lv_obj_t* status_label = nullptr;
@@ -58,13 +62,13 @@ private:
     lv_obj_t* scan_blocks[5][21]; // [cycle][id]
     lv_obj_t* scan_confirm_btn = nullptr;
     lv_obj_t* servo_btns[21];    // 舵机测试按钮引用
+    lv_obj_t* target_sheet = nullptr;
+    lv_obj_t* target_sheet_bg = nullptr;
     uint32_t scan_finish_timer = 0;
 
     // --- 序列化操作 UI 引用 ---
     lv_obj_t* dashboard_tare_btn = nullptr;
     lv_obj_t* dashboard_tare_lbl = nullptr;
-    lv_obj_t* settings_tare_btn = nullptr;
-    lv_obj_t* settings_tare_lbl = nullptr;
 
     // --- Admin / Maintenance Section ---
     void buildAdminView(lv_obj_t* parent);

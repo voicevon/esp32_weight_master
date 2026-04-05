@@ -5,7 +5,6 @@
 UIManager::UIManager() {
     tabview = nullptr;
     dashboard_tab = nullptr;
-    user_tab = nullptr;
     admin_tab = nullptr;
     status_label = nullptr;
     accu_weight_label = nullptr;
@@ -27,8 +26,6 @@ UIManager::UIManager() {
 
     dashboard_tare_btn = nullptr;
     dashboard_tare_lbl = nullptr;
-    settings_tare_btn = nullptr;
-    settings_tare_lbl = nullptr;
 }
 
 static void tab_change_event_cb(lv_event_t * e) {
@@ -39,7 +36,7 @@ static void tab_change_event_cb(lv_event_t * e) {
     if (ui && ui->getBus()) {
         if (tab_id == 0) {
             ui->getBus()->updateOperationMode(MODE_PRODUCTION);
-        } else if (tab_id == 2) {
+        } else if (tab_id == 1) {
             // 系统维护 Tab：默认进入舵机测试模式以静默总线
             ui->getBus()->updateOperationMode(MODE_SERVO_TEST);
         } else {
@@ -126,6 +123,16 @@ static void scan_confirm_btn_cb(lv_event_t * e) {
     if(ui) ui->deleteScanModal();
 }
 
+static void target_label_event_cb(lv_event_t * e) {
+    UIManager* ui = (UIManager*)lv_event_get_user_data(e);
+    if (ui) ui->showTargetBottomSheet();
+}
+
+static void target_sheet_bg_cb(lv_event_t * e) {
+    UIManager* ui = (UIManager*)lv_event_get_user_data(e);
+    if (ui) ui->closeTargetBottomSheet();
+}
+
 void UIManager::init() {
     lv_obj_set_style_bg_color(lv_scr_act(), lv_color_hex(0x0F172A), 0);
 
@@ -143,20 +150,20 @@ void UIManager::init() {
     lv_obj_set_size(tabview, 800, 480);
 
     dashboard_tab = lv_tabview_add_tab(tabview, "配重机平台");
-    user_tab = lv_tabview_add_tab(tabview, "用户设置");
     admin_tab = lv_tabview_add_tab(tabview, "系统维护");
+    about_tab = lv_tabview_add_tab(tabview, "关于我们");
 
     lv_obj_set_style_pad_all(dashboard_tab, 0, 0);
     lv_obj_set_style_border_width(dashboard_tab, 0, 0);
     lv_obj_set_scrollbar_mode(dashboard_tab, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_set_scrollbar_mode(user_tab, LV_SCROLLBAR_MODE_OFF);
     lv_obj_set_scrollbar_mode(admin_tab, LV_SCROLLBAR_MODE_AUTO);
+    lv_obj_set_scrollbar_mode(about_tab, LV_SCROLLBAR_MODE_OFF);
 
     buildDashboardView(dashboard_tab);
-    buildUserSettingsView(user_tab);
     buildAdminView(admin_tab);
+    buildAboutView(about_tab);
 
-    Serial.println("[UI] Triple-tab UI initialized with ICommandBus.");
+    Serial.println("[UI] Quad-tab UI initialized with ICommandBus.");
 }
 
 void UIManager::buildDashboardView(lv_obj_t* parent) {
@@ -185,6 +192,8 @@ void UIManager::buildDashboardView(lv_obj_t* parent) {
     lv_obj_set_style_text_color(target_label, lv_color_hex(0x38BDF8), 0);
     lv_label_set_text(target_label, "目标: 290-310g");
     lv_obj_align(target_label, LV_ALIGN_RIGHT_MID, -10, 0);
+    lv_obj_add_flag(target_label, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(target_label, target_label_event_cb, LV_EVENT_CLICKED, this);
 
     // 新增：置零按钮 (位于状态文字旁)
     dashboard_tare_btn = lv_btn_create(header);
@@ -277,61 +286,6 @@ void UIManager::buildDashboardView(lv_obj_t* parent) {
         node_bars[i] = bar;
         node_weight_labels[i] = label;
     }
-}
-
-void UIManager::buildUserSettingsView(lv_obj_t* parent) {
-    lv_obj_set_flex_flow(parent, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(parent, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START);
-
-    lv_obj_t* row1 = lv_obj_create(parent);
-    lv_obj_set_size(row1, 600, 100);
-    lv_obj_set_style_border_width(row1, 0, 0);
-    lv_obj_set_style_bg_color(row1, lv_color_hex(0x0F172A), 0);
-    lv_obj_set_flex_flow(row1, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(row1, LV_FLEX_ALIGN_SPACE_AROUND, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-
-    settings_tare_btn = lv_btn_create(row1);
-    lv_obj_set_size(settings_tare_btn, LV_PCT(40), 70);
-    lv_obj_set_style_bg_color(settings_tare_btn, lv_color_hex(0x2563EB), 0);
-    lv_obj_add_event_cb(settings_tare_btn, btn_tare_event_cb, LV_EVENT_ALL, this);
-    settings_tare_lbl = lv_label_create(settings_tare_btn);
-    lv_obj_set_style_text_font(settings_tare_lbl, &ui_font_chs_16, 0);
-    lv_label_set_text(settings_tare_lbl, "全局置零");
-    lv_obj_center(settings_tare_lbl);
-
-    lv_obj_t* btn_clear = lv_btn_create(row1);
-    lv_obj_set_size(btn_clear, LV_PCT(40), 70);
-    lv_obj_set_style_bg_color(btn_clear, lv_color_hex(0xDC2626), 0);
-    lv_obj_add_event_cb(btn_clear, btn_clear_accu_event_cb, LV_EVENT_CLICKED, this);
-    lv_obj_t* lbl_clear = lv_label_create(btn_clear);
-    lv_obj_set_style_text_font(lbl_clear, &ui_font_chs_16, 0);
-    lv_label_set_text(lbl_clear, "清零总产量");
-    lv_obj_center(lbl_clear);
-
-    lv_obj_t* row2 = lv_obj_create(parent);
-    lv_obj_set_size(row2, 600, 100);
-    lv_obj_set_style_border_width(row2, 0, 0);
-    lv_obj_set_style_bg_color(row2, lv_color_hex(0x0F172A), 0);
-    lv_obj_set_flex_flow(row2, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(row2, LV_FLEX_ALIGN_SPACE_AROUND, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-
-    lv_obj_t* btn_sub = lv_btn_create(row2);
-    lv_obj_set_size(btn_sub, LV_PCT(40), 70);
-    lv_obj_set_style_bg_color(btn_sub, lv_color_hex(0x10B981), 0);
-    lv_obj_add_event_cb(btn_sub, btn_target_minus_cb, LV_EVENT_CLICKED, this);
-    lv_obj_t* lbl_sub = lv_label_create(btn_sub);
-    lv_obj_set_style_text_font(lbl_sub, &lv_font_montserrat_16, 0);
-    lv_label_set_text(lbl_sub, "Target -10g");
-    lv_obj_center(lbl_sub);
-
-    lv_obj_t* btn_plus = lv_btn_create(row2);
-    lv_obj_set_size(btn_plus, LV_PCT(40), 70);
-    lv_obj_set_style_bg_color(btn_plus, lv_color_hex(0x10B981), 0);
-    lv_obj_add_event_cb(btn_plus, btn_target_plus_cb, LV_EVENT_CLICKED, this);
-    lv_obj_t* lbl_plus = lv_label_create(btn_plus);
-    lv_obj_set_style_text_font(lbl_plus, &lv_font_montserrat_16, 0);
-    lv_label_set_text(lbl_plus, "Target +10g");
-    lv_obj_center(lbl_plus);
 }
 
 void UIManager::buildAdminView(lv_obj_t* parent) {
@@ -635,19 +589,6 @@ void UIManager::updateDashboard(const SystemContext* ctx) {
                 lv_obj_set_style_text_color(dashboard_tare_lbl, lv_color_white(), 0);
             }
         }
-
-        if (settings_tare_btn && settings_tare_lbl) {
-            if (busy) {
-                lv_obj_clear_flag(settings_tare_btn, LV_OBJ_FLAG_CLICKABLE);
-                lv_obj_set_style_bg_color(settings_tare_btn, lv_color_hex(0x92400E), 0);
-                lv_label_set_text_fmt(settings_tare_lbl, "置零中... %d%%", progress);
-            } else {
-                lv_obj_add_flag(settings_tare_btn, LV_OBJ_FLAG_CLICKABLE);
-                lv_obj_set_style_bg_color(settings_tare_btn, lv_color_hex(0x2563EB), 0);
-                lv_label_set_text(settings_tare_lbl, "全局置零");
-                lv_obj_set_style_text_color(settings_tare_lbl, lv_color_white(), 0);
-            }
-        }
     }
 
     // 1. 状态栏更新 (仅在状态或模式变化时更新)
@@ -792,4 +733,172 @@ void UIManager::updateDashboard(const SystemContext* ctx) {
     // 更新 Snapshot 为下一帧做准备
     _lastSnapshot = ctx->ui;
     _isFirstUpdate = false;
+}
+
+void UIManager::showTargetBottomSheet() {
+    if (target_sheet) return;
+
+    // 1. 创建全屏半透明背景 (用于点击外部自动关闭)
+    target_sheet_bg = lv_obj_create(lv_scr_act());
+    lv_obj_set_size(target_sheet_bg, 800, 480);
+    lv_obj_set_style_bg_color(target_sheet_bg, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_bg_opa(target_sheet_bg, 160, 0);
+    lv_obj_set_style_border_width(target_sheet_bg, 0, 0);
+    lv_obj_add_event_cb(target_sheet_bg, target_sheet_bg_cb, LV_EVENT_CLICKED, this);
+
+    // 2. [Plan A] 高精度高亮：将 target_label 提升到顶层屏幕 (lv_scr_act)
+    // 这样它就在遮罩层之上了，且只有它不被遮挡。
+    if (target_label) {
+        lv_obj_set_parent(target_label, lv_scr_act());
+        // 在 800x480 的屏幕上重新对齐到右上角 (Header 区域)
+        lv_obj_align(target_label, LV_ALIGN_TOP_RIGHT, -10, 18); // 18 约等于 (60-24)/2
+        lv_obj_move_foreground(target_label);
+    }
+
+    // 3. 创建侧边调整面板 (1/5 宽度)
+    target_sheet = lv_obj_create(lv_scr_act());
+    lv_obj_set_size(target_sheet, 160, 180);
+    lv_obj_align(target_sheet, LV_ALIGN_TOP_RIGHT, 0, 65); // 位于 Header 下方
+    lv_obj_set_style_bg_color(target_sheet, lv_color_hex(0x1E293B), 0);
+    lv_obj_set_style_border_width(target_sheet, 1, 0);
+    lv_obj_set_style_border_color(target_sheet, lv_color_hex(0x38BDF8), 0);
+    lv_obj_set_style_border_side(target_sheet, LV_BORDER_SIDE_LEFT | LV_BORDER_SIDE_BOTTOM, 0);
+    lv_obj_set_style_radius(target_sheet, 12, 0);
+    lv_obj_set_scrollbar_mode(target_sheet, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_flex_flow(target_sheet, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(target_sheet, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_gap(target_sheet, 15, 0);
+    lv_obj_set_style_pad_all(target_sheet, 10, 0);
+
+    // 4. 按钮：加十在上，减十在下
+    lv_obj_t* btn_plus = lv_btn_create(target_sheet);
+    lv_obj_set_size(btn_plus, 140, 70);
+    lv_obj_set_style_bg_color(btn_plus, lv_color_hex(0x22C55E), 0);
+    lv_obj_add_event_cb(btn_plus, btn_target_plus_cb, LV_EVENT_CLICKED, this);
+    lv_obj_t* lbl_plus = lv_label_create(btn_plus);
+    lv_obj_set_style_text_font(lbl_plus, &lv_font_montserrat_26, 0);
+    lv_label_set_text(lbl_plus, "+ 10g");
+    lv_obj_center(lbl_plus);
+
+    // Minus Button (-10g)
+    lv_obj_t* btn_minus = lv_btn_create(target_sheet);
+    lv_obj_set_size(btn_minus, 140, 70);
+    lv_obj_set_style_bg_color(btn_minus, lv_color_hex(0xEF4444), 0);
+    lv_obj_set_style_radius(btn_minus, 8, 0);
+    lv_obj_add_event_cb(btn_minus, btn_target_minus_cb, LV_EVENT_CLICKED, this);
+    lv_obj_t* lbl_minus = lv_label_create(btn_minus);
+    lv_obj_set_style_text_font(lbl_minus, &lv_font_montserrat_26, 0);
+    lv_label_set_text(lbl_minus, "- 10g");
+    lv_obj_center(lbl_minus);
+}
+
+void UIManager::closeTargetBottomSheet() {
+    if (target_sheet) {
+        lv_obj_del(target_sheet);
+        target_sheet = nullptr;
+    }
+    if (target_sheet_bg) {
+        lv_obj_del(target_sheet_bg);
+        target_sheet_bg = nullptr;
+    }
+}
+// =============================================================================
+// About Section & 80s Apple II Rain Animation
+// =============================================================================
+
+static void raindrop_anim_cb(void* var, int32_t v) {
+    lv_obj_set_y((lv_obj_t*)var, v);
+}
+
+static void raindrop_ready_cb(lv_anim_t* a) {
+    lv_obj_del((lv_obj_t*)a->var);
+}
+
+static void spawn_raindrop_timer_cb(lv_timer_t* timer) {
+    lv_obj_t* parent = (lv_obj_t*)timer->user_data;
+    if (!lv_obj_is_valid(parent)) return;
+
+    // 仅在 About Tab 可见时产生粒子以节省性能
+    lv_obj_t* tv = lv_obj_get_parent(parent);
+    if (lv_tabview_get_tab_act(tv) != 3) return; 
+
+    lv_obj_t* drop = lv_obj_create(parent);
+    int size = rand() % 4 + 2;
+    lv_obj_set_size(drop, size, size);
+    lv_obj_set_style_radius(drop, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_border_width(drop, 0, 0);
+    
+    // 80s 霓虹配色
+    static const uint32_t colors[] = {0x38BDF8, 0x818CF8, 0x34D399, 0xFBBF24, 0xFB7185};
+    lv_obj_set_style_bg_color(drop, lv_color_hex(colors[rand() % 5]), 0);
+    lv_obj_set_style_bg_opa(drop, LV_OPA_70, 0);
+
+    lv_obj_set_pos(drop, rand() % 800, -10);
+
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, drop);
+    lv_anim_set_values(&a, -10, 480);
+    lv_anim_set_time(&a, rand() % 2000 + 1500);
+    lv_anim_set_exec_cb(&a, raindrop_anim_cb);
+    lv_anim_set_ready_cb(&a, raindrop_ready_cb);
+    lv_anim_start(&a);
+}
+
+void UIManager::buildAboutView(lv_obj_t* parent) {
+    lv_obj_set_style_bg_color(parent, lv_color_hex(0x0F172A), 0);
+    
+    // 霓虹装饰条
+    lv_obj_t* line = lv_obj_create(parent);
+    lv_obj_set_size(line, 400, 2);
+    lv_obj_align(line, LV_ALIGN_CENTER, 0, -60);
+    lv_obj_set_style_bg_color(line, lv_color_hex(0x38BDF8), 0);
+    lv_obj_set_style_border_width(line, 0, 0);
+    lv_obj_set_style_shadow_width(line, 15, 0);
+    lv_obj_set_style_shadow_color(line, lv_color_hex(0x38BDF8), 0);
+
+    // 主标题：从上方落入
+    lv_obj_t* title = lv_label_create(parent);
+    lv_label_set_text(title, "冯氏卢笋组合秤");
+    lv_obj_set_style_text_font(title, &ui_font_chs_16, 0);
+    lv_obj_set_style_text_color(title, lv_color_white(), 0);
+    lv_obj_set_style_text_letter_space(title, 4, 0);
+    lv_obj_align(title, LV_ALIGN_CENTER, 0, -90);
+
+    lv_anim_t at;
+    lv_anim_init(&at);
+    lv_anim_set_var(&at, title);
+    lv_anim_set_values(&at, -150, -90);
+    lv_anim_set_time(&at, 1200);
+    lv_anim_set_path_cb(&at, lv_anim_path_bounce);
+    lv_anim_set_exec_cb(&at, raindrop_anim_cb);
+    lv_anim_start(&at);
+
+    // 信息区块：从上方延迟落入
+    struct InfoItem { const char* text; int y; int delay; };
+    InfoItem items[] = {
+        {"公司: 山东卷积分大数据公司", 20, 600},
+        {"版权: @ 2024, 2026", 80, 900}
+    };
+
+    for (const auto& item : items) {
+        lv_obj_t* lbl = lv_label_create(parent);
+        lv_label_set_text(lbl, item.text);
+        lv_obj_set_style_text_font(lbl, &ui_font_chs_16, 0);
+        lv_obj_set_style_text_color(lbl, lv_color_hex(0x94A3B8), 0);
+        lv_obj_align(lbl, LV_ALIGN_CENTER, 0, item.y);
+
+        lv_anim_t ai;
+        lv_anim_init(&ai);
+        lv_anim_set_var(&ai, lbl);
+        lv_anim_set_values(&ai, -200, item.y);
+        lv_anim_set_time(&ai, 1000);
+        lv_anim_set_delay(&ai, item.delay);
+        lv_anim_set_path_cb(&ai, lv_anim_path_bounce);
+        lv_anim_set_exec_cb(&ai, raindrop_anim_cb);
+        lv_anim_start(&ai);
+    }
+
+    // 启动雨滴引擎
+    lv_timer_create(spawn_raindrop_timer_cb, 150, parent);
 }

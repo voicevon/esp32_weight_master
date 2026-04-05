@@ -27,6 +27,7 @@ void AppDispatcher::begin(OperationMode initialMode) {
     // 初始化系统上下文
     xSemaphoreTake(_mutexCtx, portMAX_DELAY);
     _ctx->prog.sysStatus = SYS_READY;
+    strncpy(_ctx->prog.statusText, "就绪", 32); 
     _ctx->ui.curMode = initialMode;
     xSemaphoreGive(_mutexCtx);
 
