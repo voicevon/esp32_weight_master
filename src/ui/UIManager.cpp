@@ -9,9 +9,6 @@ UIManager::UIManager() {
     status_label = nullptr;
     accu_weight_label = nullptr;
     target_label = nullptr;
-    huge_combo_label = nullptr;
-    spinbox_min = nullptr;
-    spinbox_max = nullptr;
     for(int i=0; i<NUM_SLAVES + 1; i++) {
         node_bars[i] = nullptr;
         node_weight_labels[i] = nullptr;
@@ -63,11 +60,6 @@ static void btn_tare_event_cb(lv_event_t * e) {
             if (ui && ui->getBus()) ui->getBus()->cmdGlobalTare();
         }
     }
-}
-
-static void btn_clear_accu_event_cb(lv_event_t * e) {
-    UIManager* ui = (UIManager*)lv_event_get_user_data(e);
-    if (ui && ui->getBus()) ui->getBus()->cmdClearAccumulated();
 }
 
 static void btn_target_plus_cb(lv_event_t * e) {
@@ -237,7 +229,7 @@ void UIManager::buildDashboardView(lv_obj_t* parent) {
     lv_label_set_text(label_unstable_total, "");
 
     // 段 3: 合计 (状态位 - 左侧)
-    label_grand_total_prefix = lv_label_create(center_area);
+    lv_obj_t* label_grand_total_prefix = lv_label_create(center_area);
     lv_obj_set_style_text_font(label_grand_total_prefix, &ui_font_chs_16, 0);
     lv_obj_set_style_text_color(label_grand_total_prefix, lv_color_hex(0x94A3B8), 0);
     lv_label_set_text(label_grand_total_prefix, "合计:");

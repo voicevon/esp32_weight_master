@@ -204,12 +204,7 @@ void AppProduction::updateTargets(float dMin, float dMax) {
     xSemaphoreGive(_mutex);
 }
 
-void AppProduction::clearAccumulated() {
-    xSemaphoreTake(_mutex, portMAX_DELAY);
-    _ctx->config.accumulatedWeight = 0;
-    saveParams();
-    xSemaphoreGive(_mutex);
-}
+
 
 void AppProduction::loadParams() {
     _nvs.begin("production", true);

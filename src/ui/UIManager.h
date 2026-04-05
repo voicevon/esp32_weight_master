@@ -45,26 +45,20 @@ private:
     lv_obj_t* status_label = nullptr;
     lv_obj_t* accu_weight_label = nullptr;
     lv_obj_t* target_label = nullptr;
-    lv_obj_t* huge_combo_label = nullptr;
     lv_obj_t* label_stable_total = nullptr;
     lv_obj_t* label_unstable_total = nullptr;
-    lv_obj_t* label_grand_total_prefix = nullptr;
     lv_obj_t* label_grand_total = nullptr;
-    lv_obj_t* spinbox_min = nullptr;
-    lv_obj_t* spinbox_max = nullptr;
     lv_obj_t* node_bars[21];
     lv_obj_t* node_weight_labels[21];
     
     lv_obj_t* scan_modal = nullptr;
-    lv_obj_t* scan_bar = nullptr;
     lv_obj_t* scan_title_label = nullptr;
     lv_obj_t* scan_progress_label = nullptr;
     lv_obj_t* scan_blocks[5][21]; // [cycle][id]
     lv_obj_t* scan_confirm_btn = nullptr;
-    lv_obj_t* servo_btns[21];    // 舵机测试按钮引用
+    lv_obj_t* servo_btns[21];    // 核心 UI 引用
     lv_obj_t* target_sheet = nullptr;
     lv_obj_t* target_sheet_bg = nullptr;
-    uint32_t scan_finish_timer = 0;
 
     // --- 序列化操作 UI 引用 ---
     lv_obj_t* dashboard_tare_btn = nullptr;

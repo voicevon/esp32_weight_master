@@ -72,10 +72,7 @@ void AppDispatcher::cmdServoTest(int id, bool open) {
     _pollMgr->setServoState(id, open);
 }
 
-void AppDispatcher::cmdClearAccumulated() {
-    auto app = findApp(MODE_PRODUCTION);
-    if (app) static_cast<AppProduction*>(app)->clearAccumulated();
-}
+
 
 void AppDispatcher::cmdUpdateTargets(float dMin, float dMax) {
     auto app = findApp(MODE_PRODUCTION);

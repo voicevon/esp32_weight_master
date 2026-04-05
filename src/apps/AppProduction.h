@@ -30,7 +30,6 @@ public:
 
     // 生产参数管理 (从 AppController 迁移)
     void updateTargets(float dMin, float dMax);
-    void clearAccumulated();
 
 private:
     SystemContext*      _ctx;
