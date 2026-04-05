@@ -66,9 +66,10 @@ private:
 
     // --- Admin / Maintenance Section ---
     void buildAdminView(lv_obj_t* parent);
-    lv_obj_t *diag_tx_label = nullptr;
-    lv_obj_t *diag_rx_label = nullptr;
-    lv_obj_t *diag_switch = nullptr;
+    lv_obj_t* whitelist_indicators[21]; // 白名单预览点 (1-20)
+    lv_obj_t* diag_tx_label = nullptr;   // 故障诊断：发送计数
+    lv_obj_t* diag_rx_label = nullptr;   // 故障诊断：十六进制
+    lv_obj_t* diag_switch = nullptr;
 
     ICommandBus* _bus = nullptr;
 

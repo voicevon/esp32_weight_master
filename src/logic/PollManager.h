@@ -29,6 +29,7 @@ public:
     bool isWhitelisted(int id) const;
     NodeStatus getNodeStatus(int id) const;
     void setNodeStatus(int id, NodeStatus s);
+    void setWhitelisted(int id, bool w);
     void setServoState(int id, bool open);
     
     // 聚合统计

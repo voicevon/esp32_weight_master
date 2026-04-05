@@ -91,6 +91,7 @@ bool PollManager::isOnline(int id) const { return (id >= 1 && id <= 20) ? _nodes
 bool PollManager::isWhitelisted(int id) const { return (id >= 1 && id <= 20) ? _nodes[id].whitelisted : false; }
 NodeStatus PollManager::getNodeStatus(int id) const { return (id >= 1 && id <= 20) ? _nodes[id].status : NODE_DIRTY; }
 void PollManager::setNodeStatus(int id, NodeStatus s) { if (id >= 1 && id <= 20) _nodes[id].status = s; }
+void PollManager::setWhitelisted(int id, bool w) { if (id >= 1 && id <= 20) _nodes[id].whitelisted = w; }
 void PollManager::setServoState(int id, bool open) { if (id >= 1 && id <= 20) _nodes[id].servoOpen = open; }
 
 int PollManager::getUnstableCount() const {

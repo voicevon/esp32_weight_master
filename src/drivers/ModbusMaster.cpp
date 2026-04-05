@@ -239,7 +239,12 @@ void ModbusMaster::modbusTask(void* param) {
 }
 
 // 原始字节诊断
-void ModbusMaster::sendRawByte(uint8_t byte) { Serial1.write(byte); }
+void ModbusMaster::sendRawByte(uint8_t byte) { 
+    if (_enPin >= 0) digitalWrite(_enPin, HIGH); 
+    Serial1.write(byte); 
+    Serial1.flush();
+    if (_enPin >= 0) digitalWrite(_enPin, LOW); 
+}
 int ModbusMaster::availableRaw() { return Serial1.available(); }
 uint8_t ModbusMaster::readRawByte() { return Serial1.read(); }
 void ModbusMaster::clearRawBuffer() { while(Serial1.available()) Serial1.read(); }

@@ -34,8 +34,19 @@ void AppScan::onLoop() {
             _scanCycle++;
             if (_scanCycle >= 5) {
                 _isFinished = true;
-                _pollMgr->saveWhitelist(); // 完成后保存白名单
-                Serial.println("[AppScan] Scan Sequence Completed.");
+                
+                // [修复] 应用 3/5 多数表决原则生成白名单
+                for (int i = 1; i <= 20; i++) {
+                    int onlineCount = 0;
+                    for (int c = 0; c < 5; c++) {
+                        if (_scanHistory[c][i]) onlineCount++;
+                    }
+                    // 如果 5 次扫描中有 3 次及以上在线，则认为该节点有效
+                    _pollMgr->setWhitelisted(i, onlineCount >= 3);
+                }
+
+                _pollMgr->saveWhitelist(); // 应用后立即持久化到 NVS
+                Serial.println("[AppScan] Scan results applied using 3/5 rule and saved.");
             }
         }
         return;

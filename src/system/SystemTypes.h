@@ -99,6 +99,9 @@ struct UISnapshot {
     int           scanProgress;
     int           scanCycle;
     bool          scanResults[5][21];
+    int           diagTxCount;
+    uint8_t       diagTxValue;
+    int           diagRxCount;
     char          diagRxHex[128];
 };
 
