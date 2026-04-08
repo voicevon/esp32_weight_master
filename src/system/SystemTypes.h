@@ -108,7 +108,7 @@ struct UISnapshot {
 
     // 皮带诊断同步 (由 AppBeltDiag 填充)
     bool          beltDiagScanning;   // 是否正在扫描皮带节点
-    bool          beltOnline[2];      // 皮带1和皮带2是否在线
+    int8_t        beltStatus[2];      // 0=等待, 1=在线, 2=故障, 3=超时
     bool          beltIsMoving[2];    // 皮带1和皮带2是否正在运行
 };
 

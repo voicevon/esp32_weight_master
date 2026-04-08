@@ -10,7 +10,7 @@ ModbusMaster::ModbusMaster(int rxPin, int txPin, int enPin, long baud)
 }
 
 void ModbusMaster::begin() {
-    Serial1.begin(_baud, SERIAL_8N1, _rxPin, _txPin);
+    Serial1.begin(_baud, SERIAL_8N2, _rxPin, _txPin);
     if (_enPin >= 0) {
         pinMode(_enPin, OUTPUT);
         digitalWrite(_enPin, LOW); // 默认接收模式
@@ -98,6 +98,7 @@ bool ModbusMaster::asyncRead(uint8_t id, uint16_t addr, uint16_t count, cbTransa
     while(Serial1.available()) Serial1.read(); // 清空缓冲区
     sendPacket(_txBuf, 6);
     
+    Serial.printf("[ModbusMaster] QUEUE Read ID:%d Addr:0x%04X\n", id, addr);
     xSemaphoreGive(_mutexBus);
     return true;
 }
@@ -126,6 +127,7 @@ bool ModbusMaster::asyncWrite(uint8_t id, uint16_t addr, uint16_t value, cbTrans
     while(Serial1.available()) Serial1.read();
     sendPacket(_txBuf, 6);
     
+    Serial.printf("[ModbusMaster] QUEUE Write ID:%d Addr:0x%04X Val:%d\n", id, addr, value);
     xSemaphoreGive(_mutexBus);
     return true;
 }
@@ -215,6 +217,8 @@ void ModbusMaster::modbusTask(void* param) {
                             instance->_status = ST_SUCCESS;
                         }
                     } else {
+                        Serial.printf("[ModbusMaster] CRC ERROR from ID:%d (Calc:%04X, Rx:%04X)\n", 
+                                      instance->_rxBuf[0], calcCrc, rxCrc);
                         if (instance->_pendingCb) {
                             instance->_pendingCb(Modbus::EX_ERROR, instance->_lastTid, nullptr);
                             instance->_pendingCb = nullptr;
@@ -225,6 +229,7 @@ void ModbusMaster::modbusTask(void* param) {
                     // Short frame log removed
                 }
             } else if (millis() - instance->_lastPollTime > 2000) { // 放宽到 2s
+                Serial.printf("[ModbusMaster] TIMEOUT waiting for ID:%d\n", instance->_lastTid);
                 if (instance->_pendingCb) {
                     instance->_pendingCb(Modbus::EX_TIMEOUT, instance->_lastTid, instance->_pendingData);
                     instance->_pendingCb = nullptr;

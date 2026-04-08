@@ -24,6 +24,7 @@ public:
     void setCommandBus(ICommandBus* bus) { _bus = bus; }
     ICommandBus* getBus() const { return _bus; }
     lv_obj_t* getServoBtn(int id) { return (id >= 1 && id <= 20) ? servo_btns[id] : nullptr; }
+    lv_obj_t* getAdminTv() const { return admin_tv; }
     void showTargetBottomSheet();
     void closeTargetBottomSheet();
 
@@ -66,6 +67,7 @@ private:
 
     // --- Admin / Maintenance Section ---
     void buildAdminView(lv_obj_t* parent);
+    lv_obj_t* admin_tv = nullptr;       // 维护页面的嵌套 TabView
     lv_obj_t* whitelist_indicators[21]; // 白名单预览点 (1-20)
     lv_obj_t* diag_tx_label = nullptr;   // 故障诊断：发送计数
     lv_obj_t* diag_rx_label = nullptr;   // 故障诊断：十六进制

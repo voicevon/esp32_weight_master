@@ -25,6 +25,21 @@ UIManager::UIManager() {
     dashboard_tare_lbl = nullptr;
 }
 
+static void admin_tab_change_event_cb(lv_event_t * e) {
+    lv_obj_t * tv = lv_event_get_target(e);
+    uint16_t sub_id = lv_tabview_get_tab_act(tv);
+    UIManager* ui = (UIManager*)lv_event_get_user_data(e);
+    
+    if (ui && ui->getBus()) {
+        switch (sub_id) {
+            case 0: ui->getBus()->updateOperationMode(MODE_CONFIGURATION); break; // 节点
+            case 1: ui->getBus()->updateOperationMode(MODE_CONFIGURATION); break; // 总线
+            case 2: ui->getBus()->updateOperationMode(MODE_SERVO_TEST); break;    // 舵机
+            case 3: ui->getBus()->updateOperationMode(MODE_BELT_DIAG); break;     // 皮带
+        }
+    }
+}
+
 static void tab_change_event_cb(lv_event_t * e) {
     lv_obj_t * tv = lv_event_get_target(e);
     uint16_t tab_id = lv_tabview_get_tab_act(tv);
@@ -34,10 +49,21 @@ static void tab_change_event_cb(lv_event_t * e) {
         if (tab_id == 0) {
             ui->getBus()->updateOperationMode(MODE_PRODUCTION);
         } else if (tab_id == 1) {
-            // 系统维护 Tab：默认进入舵机测试模式以静默总线
-            ui->getBus()->updateOperationMode(MODE_SERVO_TEST);
+            // 系统维护 Tab：根据当前嵌套的子 Tab 决定模式
+            lv_obj_t* admin_tv = ui->getAdminTv();
+            if (admin_tv) {
+                uint16_t sub_id = lv_tabview_get_tab_act(admin_tv);
+                switch (sub_id) {
+                    case 0: ui->getBus()->updateOperationMode(MODE_CONFIGURATION); break;
+                    case 1: ui->getBus()->updateOperationMode(MODE_CONFIGURATION); break;
+                    case 2: ui->getBus()->updateOperationMode(MODE_SERVO_TEST); break;
+                    case 3: ui->getBus()->updateOperationMode(MODE_BELT_DIAG); break;
+                }
+            } else {
+                ui->getBus()->updateOperationMode(MODE_SERVO_TEST);
+            }
         } else {
-            ui->getBus()->updateOperationMode(MODE_CONFIGURATION);
+            ui->getBus()->updateOperationMode(MODE_ABOUT);
         }
     }
 }
@@ -78,6 +104,7 @@ static void btn_scan_event_cb(lv_event_t * e) {
 }
 
 static void diag_switch_event_cb(lv_event_t * e) {
+    // 仅保留业务指令，不再触发行销模式切换
     lv_obj_t * obj = lv_event_get_target(e);
     bool active = lv_obj_has_state(obj, LV_STATE_CHECKED);
     UIManager* ui = (UIManager*)lv_event_get_user_data(e);
@@ -85,12 +112,7 @@ static void diag_switch_event_cb(lv_event_t * e) {
 }
 
 static void belt_diag_switch_event_cb(lv_event_t * e) {
-    lv_obj_t * obj = lv_event_get_target(e);
-    bool active = lv_obj_has_state(obj, LV_STATE_CHECKED);
-    UIManager* ui = (UIManager*)lv_event_get_user_data(e);
-    if (ui && ui->getBus()) {
-        ui->getBus()->updateOperationMode(active ? MODE_BELT_DIAG : MODE_SERVO_TEST);
-    }
+    // 仅用于 UI 状态控制或内部标志，不再干预全局运行模式
 }
 
 static void belt_scan_event_cb(lv_event_t * e) {
@@ -319,245 +341,213 @@ void UIManager::buildDashboardView(lv_obj_t* parent) {
 }
 
 void UIManager::buildAdminView(lv_obj_t* parent) {
-    // 开启垂直滚动，确保所有面板有充裕空间
-    lv_obj_set_scrollbar_mode(parent, LV_SCROLLBAR_MODE_AUTO);
-    lv_obj_set_flex_flow(parent, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(parent, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START);
-    lv_obj_set_style_pad_all(parent, 15, 0);
-    lv_obj_set_style_pad_gap(parent, 20, 0);
+    // 基础容器设置：禁用原有垂直布局与滚动，由嵌套 TabView 接管
+    lv_obj_set_scrollbar_mode(parent, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_style_pad_all(parent, 0, 0);
 
-    // --- Panel 1: Node Scan ---
-    lv_obj_t* scan_panel = lv_obj_create(parent);
-    lv_obj_set_size(scan_panel, 740, 130); // 增加高度用于显示白名单状态
-    lv_obj_set_style_bg_color(scan_panel, lv_color_hex(0x1E293B), 0);
-    lv_obj_set_style_border_color(scan_panel, lv_color_hex(0x334155), 0);
-    lv_obj_set_style_radius(scan_panel, 12, 0);
+    // 1. 创建嵌套 TabView (内部二级导航)
+    admin_tv = lv_tabview_create(parent, LV_DIR_TOP, 40);
+    lv_obj_set_style_bg_color(admin_tv, lv_color_hex(0x0F172A), 0);
+    lv_obj_add_event_cb(admin_tv, admin_tab_change_event_cb, LV_EVENT_VALUE_CHANGED, this);
     
-    lv_obj_t* lbl_scan_title = lv_label_create(scan_panel);
-    lv_obj_set_style_text_font(lbl_scan_title, &ui_font_chs_16, 0);
-    lv_obj_set_style_text_color(lbl_scan_title, lv_color_white(), 0);
-    lv_label_set_text(lbl_scan_title, "1. 节点探测与白名单同步 (Node Scan)");
-    lv_obj_align(lbl_scan_title, LV_ALIGN_TOP_LEFT, 0, 0);
+    lv_obj_t* sub_btns = lv_tabview_get_tab_btns(admin_tv);
+    lv_obj_set_style_bg_color(sub_btns, lv_color_hex(0x1E293B), 0);
+    lv_obj_set_style_text_color(sub_btns, lv_color_hex(0x94A3B8), 0);
+    lv_obj_set_style_text_font(sub_btns, &ui_font_chs_16, 0);
+    lv_obj_set_style_bg_color(sub_btns, lv_color_hex(0x38BDF8), LV_PART_INDICATOR);
+    lv_obj_set_style_text_color(sub_btns, lv_color_white(), LV_STATE_CHECKED);
 
+    // 2. 添加四个功能 Tab
+    lv_obj_t* t_scan = lv_tabview_add_tab(admin_tv, "节点");
+    lv_obj_t* t_monitor = lv_tabview_add_tab(admin_tv, "总线");
+    lv_obj_t* t_servo = lv_tabview_add_tab(admin_tv, "舵机");
+    lv_obj_t* t_belt = lv_tabview_add_tab(admin_tv, "皮带");
+
+    // 统一设置各 Tab 样式
+    lv_obj_t* sub_tabs[] = {t_scan, t_monitor, t_servo, t_belt};
+    for(auto t : sub_tabs) {
+        lv_obj_set_style_pad_all(t, 15, 0);
+        lv_obj_set_scrollbar_mode(t, LV_SCROLLBAR_MODE_OFF); 
+    }
+
+    // --- Tab 1: 节点探测与白名单 ---
+    lv_obj_t* scan_panel = lv_obj_create(t_scan);
+    lv_obj_set_size(scan_panel, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_style_bg_opa(scan_panel, 0, 0);
+    lv_obj_set_style_border_width(scan_panel, 0, 0);
+    
     lv_obj_t* btn_scan = lv_btn_create(scan_panel);
-    lv_obj_set_size(btn_scan, 120, 40);
-    lv_obj_align(btn_scan, LV_ALIGN_TOP_RIGHT, 0, -5);
+    lv_obj_set_size(btn_scan, 160, 50);
+    lv_obj_align(btn_scan, LV_ALIGN_TOP_MID, 0, 20);
     lv_obj_set_style_bg_color(btn_scan, lv_color_hex(0x8B5CF6), 0);
     lv_obj_add_event_cb(btn_scan, btn_scan_event_cb, LV_EVENT_CLICKED, this);
     lv_obj_t* lbl_scan_btn = lv_label_create(btn_scan);
     lv_obj_set_style_text_font(lbl_scan_btn, &ui_font_chs_16, 0);
-    lv_label_set_text(lbl_scan_btn, "开始扫描");
+    lv_label_set_text(lbl_scan_btn, "开始全量扫描");
     lv_obj_center(lbl_scan_btn);
 
-    // 白名单指示器 (1-20)
     lv_obj_t* wl_grid = lv_obj_create(scan_panel);
-    lv_obj_set_size(wl_grid, 680, 50);
-    lv_obj_align(wl_grid, LV_ALIGN_BOTTOM_MID, 0, 0);
-    lv_obj_set_style_bg_opa(wl_grid, 0, 0);
-    lv_obj_set_style_border_width(wl_grid, 0, 0);
-    lv_obj_set_flex_flow(wl_grid, LV_FLEX_FLOW_ROW);
+    lv_obj_set_size(wl_grid, 720, 160);
+    lv_obj_align(wl_grid, LV_ALIGN_BOTTOM_MID, 0, -20);
+    lv_obj_set_style_bg_color(wl_grid, lv_color_hex(0x1E293B), 0);
+    lv_obj_set_style_border_color(wl_grid, lv_color_hex(0x334155), 0);
+    lv_obj_set_style_radius(wl_grid, 12, 0);
+    lv_obj_set_flex_flow(wl_grid, LV_FLEX_FLOW_ROW_WRAP);
     lv_obj_set_flex_align(wl_grid, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_gap(wl_grid, 6, 0);
+    lv_obj_set_style_pad_gap(wl_grid, 8, 0);
 
     for(int i=1; i<=20; i++) {
         whitelist_indicators[i] = lv_obj_create(wl_grid);
-        lv_obj_set_size(whitelist_indicators[i], 28, 20);
+        lv_obj_set_size(whitelist_indicators[i], 60, 32);
         lv_obj_set_style_bg_color(whitelist_indicators[i], lv_color_hex(0x475569), 0);
         lv_obj_set_style_border_width(whitelist_indicators[i], 0, 0);
-        lv_obj_set_style_radius(whitelist_indicators[i], 3, 0);
-        
+        lv_obj_set_style_radius(whitelist_indicators[i], 6, 0);
         lv_obj_t* lbl = lv_label_create(whitelist_indicators[i]);
-        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_12, 0);
+        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_16, 0);
         lv_obj_set_style_text_color(lbl, lv_color_white(), 0);
         lv_label_set_text_fmt(lbl, "%d", i);
         lv_obj_center(lbl);
     }
 
-    // --- Panel 2: Bus Monitor ---
-    lv_obj_t* diag_panel = lv_obj_create(parent);
-    lv_obj_set_size(diag_panel, 740, 160); // 增加高度
-    lv_obj_set_style_bg_color(diag_panel, lv_color_hex(0x1E293B), 0);
-    lv_obj_set_style_border_color(diag_panel, lv_color_hex(0x334155), 0);
-    lv_obj_set_style_radius(diag_panel, 12, 0);
-    lv_obj_set_style_pad_all(diag_panel, 12, 0);
+    // --- Tab 2: 总线监视器 ---
+    lv_obj_t* monitor_cont = lv_obj_create(t_monitor);
+    lv_obj_set_size(monitor_cont, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_style_bg_opa(monitor_cont, 0, 0);
+    lv_obj_set_style_border_width(monitor_cont, 0, 0);
 
-    lv_obj_t* diag_title = lv_label_create(diag_panel);
-    lv_obj_set_style_text_font(diag_title, &ui_font_chs_16, 0);
-    lv_obj_set_style_text_color(diag_title, lv_color_white(), 0);
-    lv_label_set_text(diag_title, "2. 485 总线物理层监视器 (1Hz Monitor)");
-    lv_obj_align(diag_title, LV_ALIGN_TOP_LEFT, 0, 0);
+    lv_obj_t* lbl_mon_hint = lv_label_create(monitor_cont);
+    lv_obj_set_style_text_font(lbl_mon_hint, &ui_font_chs_16, 0);
+    lv_obj_set_style_text_color(lbl_mon_hint, lv_color_hex(0x94A3B8), 0);
+    lv_label_set_text(lbl_mon_hint, "RS485 总线实时物理层原始报文监测器 (1Hz)");
+    lv_obj_align(lbl_mon_hint, LV_ALIGN_TOP_LEFT, 10, 5);
 
-    diag_switch = lv_switch_create(diag_panel);
-    lv_obj_set_size(diag_switch, 50, 25);
-    lv_obj_align(diag_switch, LV_ALIGN_TOP_RIGHT, 0, 0);
+    diag_switch = lv_switch_create(monitor_cont);
+    lv_obj_set_size(diag_switch, 60, 30);
+    lv_obj_align(diag_switch, LV_ALIGN_TOP_RIGHT, -10, 0);
     lv_obj_add_event_cb(diag_switch, diag_switch_event_cb, LV_EVENT_VALUE_CHANGED, this);
 
-    lv_obj_t* terminal = lv_obj_create(diag_panel);
-    lv_obj_set_size(terminal, 716, 95); 
-    lv_obj_align(terminal, LV_ALIGN_BOTTOM_MID, 0, 0);
-    lv_obj_set_style_bg_color(terminal, lv_color_hex(0x0F172A), 0);
-    lv_obj_set_style_border_width(terminal, 1, 0);
-    lv_obj_set_style_border_color(terminal, lv_color_hex(0x334155), 0);
-    lv_obj_set_style_pad_all(terminal, 8, 0);
+    lv_obj_t* term = lv_obj_create(monitor_cont);
+    lv_obj_set_size(term, 740, 240);
+    lv_obj_align(term, LV_ALIGN_BOTTOM_MID, 0, -10);
+    lv_obj_set_style_bg_color(term, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_border_color(term, lv_color_hex(0x334155), 0);
+    lv_obj_set_style_radius(term, 8, 0);
     
-    diag_tx_label = lv_label_create(terminal);
+    diag_tx_label = lv_label_create(term);
     lv_obj_set_style_text_font(diag_tx_label, &ui_font_chs_16, 0);
     lv_obj_set_style_text_color(diag_tx_label, lv_color_hex(0x38BDF8), 0);
-    lv_label_set_text(diag_tx_label, "TX/RX Activity Loading...");
-    lv_obj_align(diag_tx_label, LV_ALIGN_TOP_LEFT, 5, 5);
+    lv_label_set_text(diag_tx_label, "TX Activity...");
+    lv_obj_align(diag_tx_label, LV_ALIGN_TOP_LEFT, 12, 10);
 
-    diag_rx_label = lv_label_create(terminal);
-    lv_obj_set_width(diag_rx_label, 700);
+    diag_rx_label = lv_label_create(term);
+    lv_obj_set_width(diag_rx_label, 710);
     lv_obj_set_style_text_font(diag_rx_label, &lv_font_montserrat_26, 0);
     lv_obj_set_style_text_color(diag_rx_label, lv_color_hex(0x22C55E), 0);
     lv_label_set_text(diag_rx_label, "---");
-    lv_obj_align(diag_rx_label, LV_ALIGN_BOTTOM_LEFT, 5, -5);
+    lv_obj_align(diag_rx_label, LV_ALIGN_CENTER, 0, 20);
 
-    // --- Panel 3: Servo Maintenance ---
-    lv_obj_t* servo_panel = lv_obj_create(parent);
-    lv_obj_set_size(servo_panel, 740, 185); 
-    lv_obj_set_style_bg_color(servo_panel, lv_color_hex(0x1E293B), 0);
-    lv_obj_set_style_border_color(servo_panel, lv_color_hex(0x334155), 0);
-    lv_obj_set_style_radius(servo_panel, 12, 0);
-    lv_obj_set_style_pad_all(servo_panel, 10, 0);
+    // --- Tab 3: 舵机维护 ---
+    lv_obj_t* servo_cont = lv_obj_create(t_servo);
+    lv_obj_set_size(servo_cont, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_style_bg_opa(servo_cont, 0, 0);
+    lv_obj_set_style_border_width(servo_cont, 0, 0);
 
-    lv_obj_t* servo_title = lv_label_create(servo_panel);
-    lv_obj_set_style_text_font(servo_title, &ui_font_chs_16, 0);
-    lv_obj_set_style_text_color(servo_title, lv_color_white(), 0);
-    lv_label_set_text(servo_title, "3. 舵机在线维护测试 (Servo Test)");
-    lv_obj_align(servo_title, LV_ALIGN_TOP_LEFT, 0, 0);
+    lv_obj_t* btn_g_open = lv_btn_create(servo_cont);
+    lv_obj_set_size(btn_g_open, 120, 45);
+    lv_obj_align(btn_g_open, LV_ALIGN_TOP_LEFT, 10, 5);
+    lv_obj_set_style_bg_color(btn_g_open, lv_color_hex(0x10B981), 0);
+    lv_obj_add_event_cb(btn_g_open, btn_global_open_cb, LV_EVENT_CLICKED, this);
+    lv_obj_t* lbl_g_open = lv_label_create(btn_g_open);
+    lv_obj_set_style_text_font(lbl_g_open, &ui_font_chs_16, 0);
+    lv_label_set_text(lbl_g_open, "全部开启");
+    lv_obj_center(lbl_g_open);
 
-    lv_obj_t* btn_all_open = lv_btn_create(servo_panel);
-    lv_obj_set_size(btn_all_open, 90, 32);
-    lv_obj_align(btn_all_open, LV_ALIGN_TOP_RIGHT, -100, -5);
-    lv_obj_set_style_bg_color(btn_all_open, lv_color_hex(0x22C55E), 0);
-    lv_obj_add_event_cb(btn_all_open, btn_global_open_cb, LV_EVENT_CLICKED, this);
-    lv_obj_t* lbl_all_open = lv_label_create(btn_all_open);
-    lv_obj_set_style_text_font(lbl_all_open, &ui_font_chs_16, 0);
-    lv_label_set_text(lbl_all_open, "全开");
-    lv_obj_center(lbl_all_open);
+    lv_obj_t* btn_g_close = lv_btn_create(servo_cont);
+    lv_obj_set_size(btn_g_close, 120, 45);
+    lv_obj_align(btn_g_close, LV_ALIGN_TOP_LEFT, 140, 5);
+    lv_obj_set_style_bg_color(btn_g_close, lv_color_hex(0x6366F1), 0);
+    lv_obj_add_event_cb(btn_g_close, btn_global_close_cb, LV_EVENT_CLICKED, this);
+    lv_obj_t* lbl_g_close = lv_label_create(btn_g_close);
+    lv_obj_set_style_text_font(lbl_g_close, &ui_font_chs_16, 0);
+    lv_label_set_text(lbl_g_close, "全部关闭");
+    lv_obj_center(lbl_g_close);
 
-    lv_obj_t* btn_all_close = lv_btn_create(servo_panel);
-    lv_obj_set_size(btn_all_close, 90, 32);
-    lv_obj_align(btn_all_close, LV_ALIGN_TOP_RIGHT, 0, -5);
-    lv_obj_set_style_bg_color(btn_all_close, lv_color_hex(0xA855F7), 0);
-    lv_obj_add_event_cb(btn_all_close, btn_global_close_cb, LV_EVENT_CLICKED, this);
-    lv_obj_t* lbl_all_close = lv_label_create(btn_all_close);
-    lv_obj_set_style_text_font(lbl_all_close, &ui_font_chs_16, 0);
-    lv_label_set_text(lbl_all_close, "全关");
-    lv_obj_center(lbl_all_close);
-
-    lv_obj_t* grid = lv_obj_create(servo_panel);
-    lv_obj_set_size(grid, 720, 115);
-    lv_obj_align(grid, LV_ALIGN_BOTTOM_MID, 0, 0);
-    lv_obj_set_style_bg_opa(grid, 0, 0);
-    lv_obj_set_style_border_width(grid, 0, 0);
-    lv_obj_set_flex_flow(grid, LV_FLEX_FLOW_ROW_WRAP);
-    lv_obj_set_flex_align(grid, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_gap(grid, 8, 0);
+    lv_obj_t* s_grid = lv_obj_create(servo_cont);
+    lv_obj_set_size(s_grid, 740, 240);
+    lv_obj_align(s_grid, LV_ALIGN_BOTTOM_MID, 0, -5);
+    lv_obj_set_style_bg_color(s_grid, lv_color_hex(0x1E293B), 0);
+    lv_obj_set_style_border_color(s_grid, lv_color_hex(0x334155), 0);
+    lv_obj_set_style_radius(s_grid, 12, 0);
+    lv_obj_set_flex_flow(s_grid, LV_FLEX_FLOW_ROW_WRAP);
+    lv_obj_set_flex_align(s_grid, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_gap(s_grid, 12, 0);
 
     for(int i=1; i<=20; i++) {
-        servo_btns[i] = lv_btn_create(grid);
-        lv_obj_set_size(servo_btns[i], 62, 32);
+        servo_btns[i] = lv_btn_create(s_grid);
+        lv_obj_set_size(servo_btns[i], 85, 42);
         lv_obj_add_flag(servo_btns[i], LV_OBJ_FLAG_CHECKABLE);
         lv_obj_add_event_cb(servo_btns[i], servo_test_event_cb, LV_EVENT_VALUE_CHANGED, this);
         lv_obj_t* lbl = lv_label_create(servo_btns[i]);
-        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_12, 0);
+        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_16, 0);
         lv_label_set_text_fmt(lbl, "%d", i);
         lv_obj_center(lbl);
     }
 
-    // --- Panel 4: Belt Maintenance ---
-    lv_obj_t* belt_panel = lv_obj_create(parent);
-    lv_obj_set_size(belt_panel, 740, 440); 
-    lv_obj_set_style_bg_color(belt_panel, lv_color_hex(0x1E293B), 0);
-    lv_obj_set_style_border_color(belt_panel, lv_color_hex(0x334155), 0);
-    lv_obj_set_style_radius(belt_panel, 12, 0);
-    lv_obj_set_style_pad_all(belt_panel, 15, 0);
+    // --- Tab 4: 皮带诊断 ---
+    lv_obj_t* belt_cont = lv_obj_create(t_belt);
+    lv_obj_set_size(belt_cont, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_style_bg_opa(belt_cont, 0, 0);
+    lv_obj_set_style_border_width(belt_cont, 0, 0);
 
-    lv_obj_t* belt_title = lv_label_create(belt_panel);
-    lv_obj_set_style_text_font(belt_title, &ui_font_chs_16, 0);
-    lv_obj_set_style_text_color(belt_title, lv_color_white(), 0);
-    lv_label_set_text(belt_title, "4. 皮带运行诊断测试 (Belt Test)");
-    lv_obj_align(belt_title, LV_ALIGN_TOP_LEFT, 0, 0);
+    // 移除多余的 belt_diag_switch 开关
 
-    belt_diag_switch = lv_switch_create(belt_panel);
-    lv_obj_set_size(belt_diag_switch, 50, 25);
-    lv_obj_align(belt_diag_switch, LV_ALIGN_TOP_RIGHT, 0, 0);
-    lv_obj_add_event_cb(belt_diag_switch, belt_diag_switch_event_cb, LV_EVENT_VALUE_CHANGED, this);
-
-    belt_scan_btn = lv_btn_create(belt_panel);
-    lv_obj_set_size(belt_scan_btn, 120, 36);
-    lv_obj_align(belt_scan_btn, LV_ALIGN_TOP_RIGHT, -70, -5);
+    belt_scan_btn = lv_btn_create(belt_cont);
+    lv_obj_set_size(belt_scan_btn, 130, 40);
+    lv_obj_align(belt_scan_btn, LV_ALIGN_TOP_RIGHT, -85, -5);
     lv_obj_set_style_bg_color(belt_scan_btn, lv_color_hex(0x8B5CF6), 0);
     lv_obj_add_event_cb(belt_scan_btn, belt_scan_event_cb, LV_EVENT_CLICKED, this);
     lv_obj_t* lbl_bscan = lv_label_create(belt_scan_btn);
     lv_obj_set_style_text_font(lbl_bscan, &ui_font_chs_16, 0);
-    lv_label_set_text(lbl_bscan, "诊断扫描");
+    lv_label_set_text(lbl_bscan, "扫描");
     lv_obj_center(lbl_bscan);
 
-    // 一级带（收集带）
-    lv_obj_t* b1_label = lv_label_create(belt_panel);
-    lv_obj_set_style_text_font(b1_label, &ui_font_chs_16, 0);
-    lv_obj_set_style_text_color(b1_label, lv_color_hex(0x94A3B8), 0);
-    lv_label_set_text(b1_label, "一级收集带 (ID 21):");
-    lv_obj_align(b1_label, LV_ALIGN_TOP_LEFT, 10, 60);
+    // 一级与二级带控制区域
+    struct BeltConfig { const char* name; int y; lv_obj_t** indicator; lv_event_cb_t cb; uint32_t color; };
+    BeltConfig configs[] = {
+        {"1级收集带 (ID: 21)", 45, &belt1_status_indicator, btn_belt1_test_cb, 0x0284C7},
+        {"2级输出带 (ID: 22)", 180, &belt2_status_indicator, btn_belt2_test_cb, 0x059669}
+    };
 
-    belt1_status_indicator = lv_label_create(belt_panel);
-    lv_obj_set_style_text_font(belt1_status_indicator, &ui_font_chs_16, 0);
-    lv_obj_set_style_text_color(belt1_status_indicator, lv_color_white(), 0);
-    lv_obj_set_style_bg_color(belt1_status_indicator, lv_color_hex(0x475569), 0);
-    lv_obj_set_style_bg_opa(belt1_status_indicator, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(belt1_status_indicator, 4, 0);
-    lv_obj_set_style_pad_hor(belt1_status_indicator, 10, 0);
-    lv_obj_set_style_pad_ver(belt1_status_indicator, 2, 0);
-    lv_label_set_text(belt1_status_indicator, "等待扫描");
-    lv_obj_align(belt1_status_indicator, LV_ALIGN_TOP_LEFT, 175, 58);
+    for (const auto& cfg : configs) {
+        lv_obj_t* l = lv_label_create(belt_cont);
+        lv_obj_set_style_text_font(l, &ui_font_chs_16, 0);
+        lv_obj_set_style_text_color(l, lv_color_hex(0x94A3B8), 0);
+        lv_label_set_text(l, cfg.name);
+        lv_obj_align(l, LV_ALIGN_TOP_LEFT, 10, cfg.y);
 
-    const char* dists[] = {"100mm", "200mm", "500mm", "1000mm"};
-    for (int i=0; i<4; i++) {
-        lv_obj_t* btn = lv_btn_create(belt_panel);
-        lv_obj_set_size(btn, 150, 60);
-        lv_obj_align(btn, LV_ALIGN_TOP_LEFT, 10 + (i % 2) * 165, 100 + (i / 2) * 70);
-        // 如果想要一行排开，屏幕宽度 800, panel 740, 150*4 = 600, 间隔 (740-600)/5 = 28
-        // 实际上 150*4 + 20*3 = 660, 放在 740 里面没问题。
-        lv_obj_align(btn, LV_ALIGN_TOP_LEFT, 10 + i * 175, 105);
-        lv_obj_set_style_bg_color(btn, lv_color_hex(0x0284C7), 0);
-        lv_obj_add_event_cb(btn, btn_belt1_test_cb, LV_EVENT_CLICKED, this);
-        lv_obj_t* lbl = lv_label_create(btn);
-        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_26, 0);
-        lv_label_set_text(lbl, dists[i]);
-        lv_obj_center(lbl);
-    }
+        *cfg.indicator = lv_label_create(belt_cont);
+        lv_obj_set_style_text_font(*cfg.indicator, &ui_font_chs_16, 0);
+        lv_obj_set_style_text_color(*cfg.indicator, lv_color_white(), 0);
+        lv_obj_set_style_bg_color(*cfg.indicator, lv_color_hex(0x475569), 0);
+        lv_obj_set_style_bg_opa(*cfg.indicator, LV_OPA_COVER, 0);
+        lv_obj_set_style_radius(*cfg.indicator, 4, 0);
+        lv_obj_set_style_pad_hor(*cfg.indicator, 12, 0);
+        lv_obj_set_style_pad_ver(*cfg.indicator, 4, 0);
+        lv_label_set_text(*cfg.indicator, "等待扫描");
+        lv_obj_align(*cfg.indicator, LV_ALIGN_TOP_LEFT, 260, cfg.y - 4); // 向右移动，避免重叠
 
-    // 二级带（输出带）
-    lv_obj_t* b2_label = lv_label_create(belt_panel);
-    lv_obj_set_style_text_font(b2_label, &ui_font_chs_16, 0);
-    lv_obj_set_style_text_color(b2_label, lv_color_hex(0x94A3B8), 0);
-    lv_label_set_text(b2_label, "二级输出带 (ID 22):");
-    lv_obj_align(b2_label, LV_ALIGN_TOP_LEFT, 10, 240);
-
-    belt2_status_indicator = lv_label_create(belt_panel);
-    lv_obj_set_style_text_font(belt2_status_indicator, &ui_font_chs_16, 0);
-    lv_obj_set_style_text_color(belt2_status_indicator, lv_color_white(), 0);
-    lv_obj_set_style_bg_color(belt2_status_indicator, lv_color_hex(0x475569), 0);
-    lv_obj_set_style_bg_opa(belt2_status_indicator, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(belt2_status_indicator, 4, 0);
-    lv_obj_set_style_pad_hor(belt2_status_indicator, 10, 0);
-    lv_obj_set_style_pad_ver(belt2_status_indicator, 2, 0);
-    lv_label_set_text(belt2_status_indicator, "等待扫描");
-    lv_obj_align(belt2_status_indicator, LV_ALIGN_TOP_LEFT, 175, 238);
-
-    for (int i=0; i<4; i++) {
-        lv_obj_t* btn = lv_btn_create(belt_panel);
-        lv_obj_set_size(btn, 150, 60);
-        lv_obj_align(btn, LV_ALIGN_TOP_LEFT, 10 + i * 175, 285);
-        lv_obj_set_style_bg_color(btn, lv_color_hex(0x059669), 0);
-        lv_obj_add_event_cb(btn, btn_belt2_test_cb, LV_EVENT_CLICKED, this);
-        lv_obj_t* lbl = lv_label_create(btn);
-        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_26, 0);
-        lv_label_set_text(lbl, dists[i]);
-        lv_obj_center(lbl);
+        const char* dists[] = {"100mm", "200mm", "500mm", "1000mm"};
+        for (int i=0; i<4; i++) {
+            lv_obj_t* btn = lv_btn_create(belt_cont);
+            lv_obj_set_size(btn, 170, 70);
+            lv_obj_align(btn, LV_ALIGN_TOP_LEFT, 10 + i * 185, cfg.y + 40);
+            lv_obj_set_style_bg_color(btn, lv_color_hex(cfg.color), 0);
+            lv_obj_add_event_cb(btn, cfg.cb, LV_EVENT_CLICKED, this);
+            lv_obj_t* lb = lv_label_create(btn);
+            lv_obj_set_style_text_font(lb, &lv_font_montserrat_26, 0);
+            lv_label_set_text(lb, dists[i]);
+            lv_obj_center(lb);
+        }
     }
 }
 
@@ -891,13 +881,7 @@ void UIManager::updateDashboard(const SystemContext* ctx) {
         }
 
         // 6. 皮带诊断 UI 状态同步
-        if (belt_diag_switch) {
-            bool isBeltDiag = (ctx->ui.curMode == MODE_BELT_DIAG);
-            if (isBeltDiag != lv_obj_has_state(belt_diag_switch, LV_STATE_CHECKED)) {
-                if (isBeltDiag) lv_obj_add_state(belt_diag_switch, LV_STATE_CHECKED);
-                else lv_obj_clear_state(belt_diag_switch, LV_STATE_CHECKED);
-            }
-
+        if (ctx->ui.curMode == MODE_BELT_DIAG) {
             if (belt_scan_btn) {
                 lv_obj_set_style_bg_color(belt_scan_btn, 
                     ctx->ui.beltDiagScanning ? lv_color_hex(0xD97706) : lv_color_hex(0x8B5CF6), 0);
@@ -906,10 +890,13 @@ void UIManager::updateDashboard(const SystemContext* ctx) {
             if (belt1_status_indicator) {
                 uint32_t c1 = 0x475569;
                 const char* st1 = "等待扫描";
-                if (isBeltDiag && !ctx->ui.beltDiagScanning) {
-                    if (ctx->ui.beltIsMoving[0]) { c1 = 0x38BDF8; st1 = "运行中"; }
-                    else if (ctx->ui.beltOnline[0]) { c1 = 0x22C55E; st1 = "在线"; }
-                    else { c1 = 0xEF4444; st1 = "通讯失败"; }
+                if (ctx->ui.beltDiagScanning) { c1 = 0xD97706; st1 = "扫描中..."; }
+                else if (ctx->ui.beltIsMoving[0]) { c1 = 0x38BDF8; st1 = "运行中"; }
+                else {
+                    int8_t s = ctx->ui.beltStatus[0];
+                    const char* st_map[] = {"等待扫描", "在线", "通讯失败", "通讯超时"};
+                    uint32_t col_map[] = {0x475569, 0x22C55E, 0xEF4444, 0xF59E0B};
+                    if (s >= 0 && s <= 3) { st1 = st_map[s]; c1 = col_map[s]; }
                 }
                 lv_obj_set_style_bg_color(belt1_status_indicator, lv_color_hex(c1), 0);
                 lv_label_set_text(belt1_status_indicator, st1);
@@ -918,10 +905,13 @@ void UIManager::updateDashboard(const SystemContext* ctx) {
             if (belt2_status_indicator) {
                 uint32_t c2 = 0x475569;
                 const char* st2 = "等待扫描";
-                if (isBeltDiag && !ctx->ui.beltDiagScanning) {
-                    if (ctx->ui.beltIsMoving[1]) { c2 = 0x38BDF8; st2 = "运行中"; }
-                    else if (ctx->ui.beltOnline[1]) { c2 = 0x22C55E; st2 = "在线"; }
-                    else { c2 = 0xEF4444; st2 = "通讯失败"; }
+                if (ctx->ui.beltDiagScanning) { c2 = 0xD97706; st2 = "扫描中..."; }
+                else if (ctx->ui.beltIsMoving[1]) { c2 = 0x38BDF8; st2 = "运行中"; }
+                else {
+                    int8_t s = ctx->ui.beltStatus[1];
+                    const char* st_map[] = {"等待扫描", "在线", "通讯失败", "通讯超时"};
+                    uint32_t col_map[] = {0x475569, 0x22C55E, 0xEF4444, 0xF59E0B};
+                    if (s >= 0 && s <= 3) { st2 = st_map[s]; c2 = col_map[s]; }
                 }
                 lv_obj_set_style_bg_color(belt2_status_indicator, lv_color_hex(c2), 0);
                 lv_label_set_text(belt2_status_indicator, st2);

@@ -24,6 +24,9 @@ public:
     void onLoop() override;
     void onExit() override;
     bool isFinished() const override { return false; }
+    
+    bool isScanning() const { return _state >= DIAG_SCAN_START_B1 && _state <= DIAG_SCAN_WAIT_B2; }
+    int8_t getBeltStatus(int idx) const { return (idx >= 0 && idx < 2) ? _ctx->ui.beltStatus[idx] : 0; }
 
     void triggerScan();
     void triggerRun(int beltIndex, int distanceMm);
@@ -34,15 +37,26 @@ private:
     BeltManager*   _conveyor;
     SemaphoreHandle_t _mutexCtx;
 
-    BeltDiagState _state;
-    unsigned long _stateTimer;
+    enum DiagState {
+        DIAG_IDLE,
+        DIAG_SCAN_START_B1,
+        DIAG_SCAN_WAIT_B1,
+        DIAG_SCAN_COOLDOWN, // 扫描间隙冷却，防止总线竞争
+        DIAG_SCAN_START_B2,
+        DIAG_SCAN_WAIT_B2,
+        DIAG_RUNNING
+    };
 
-    int _runBeltIndex;
-    int _runDistance;
+    DiagState _state;
+    uint32_t  _stateTimer;
+    uint16_t  _scanBuffer[8];
+    
+    bool _b1Finished = false;
+    bool _b2Finished = false;
+    Modbus::ResultCode _b1Result = Modbus::EX_SUCCESS;
+    Modbus::ResultCode _b2Result = Modbus::EX_SUCCESS;
 
-    uint16_t _scanBuffer[2];
-
-    void handleScanResult(uint8_t id, bool success);
+    void handleScanResult(uint8_t id, Modbus::ResultCode result);
 };
 
 #endif // APP_BELT_DIAG_H

@@ -62,11 +62,11 @@ void AppDispatcher::cmdGlobalServo(bool open) {
 }
 
 void AppDispatcher::cmdStartScan() {
-    updateOperationMode(MODE_DIAG_SCAN);
+    // 模式切换现在由 UIManager 的 Tab 切换事件统一管理
 }
 
 void AppDispatcher::cmdToggleDiagnosis(bool active) {
-    updateOperationMode(active ? MODE_DIAG_PULSE : MODE_PRODUCTION);
+    // 仅透传业务逻辑状态，不再干预模式切换
 }
 
 void AppDispatcher::cmdServoTest(int id, bool open) {
@@ -84,9 +84,13 @@ void AppDispatcher::cmdBeltTest(int beltId, int distanceMm) {
 }
 
 void AppDispatcher::cmdTriggerBeltScan() {
+    Serial.println("[Dispatcher] Command: Trigger Belt Scan");
     auto app = findApp(MODE_BELT_DIAG);
     if (app && _currentMode == MODE_BELT_DIAG) {
         static_cast<AppBeltDiag*>(app)->triggerScan();
+    } else {
+        Serial.printf("[Dispatcher] Cannot trigger scan: App found? %d, CurrentMode: %s\n", 
+                      (app != nullptr), modeToStr(_currentMode));
     }
 }
 
@@ -185,6 +189,10 @@ void AppDispatcher::uiLoop() {
                         _ctx->ui.scanResults[c][i] = scanApp->getScanResult(c, i);
                     }
                 }
+            } else if (_currentMode == MODE_BELT_DIAG) {
+                _ctx->ui.beltDiagScanning = static_cast<AppBeltDiag*>(_currentApp)->isScanning();
+                _ctx->ui.beltStatus[0] = static_cast<AppBeltDiag*>(_currentApp)->getBeltStatus(0);
+                _ctx->ui.beltStatus[1] = static_cast<AppBeltDiag*>(_currentApp)->getBeltStatus(1);
             }
         }
 
@@ -202,8 +210,12 @@ const char* AppDispatcher::modeToStr(OperationMode m) {
         case MODE_PRODUCTION:      return "PRODUCTION";
         case MODE_DIAG_PULSE:      return "DIAG_PULSE";
         case MODE_DIAG_SCAN:       return "DIAG_SCAN";
+        case MODE_DIAG_DETAIL:     return "DIAG_DETAIL";
+        case MODE_CONFIGURATION:   return "CONFIGURATION";
         case MODE_SEQUENTIAL_CTRL: return "SEQUENTIAL_CTRL";
+        case MODE_SERVO_TEST:      return "SERVO_TEST";
         case MODE_BELT_DIAG:       return "BELT_DIAG";
+        case MODE_ABOUT:           return "ABOUT";
         default:                   return "UNKNOWN";
     }
 }
