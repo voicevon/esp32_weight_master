@@ -16,6 +16,7 @@ enum OperationMode {
     MODE_CONFIGURATION, // 配置模式
     MODE_SEQUENTIAL_CTRL, // 序列化控制模式 (开/关/置零)
     MODE_SERVO_TEST,     // 舵机维护测试模式 (独占总线)
+    MODE_BELT_DIAG,      // 皮带诊断跑距测试模式 (独占总线)
     MODE_ABOUT           // 关于界面
 };
 
@@ -41,6 +42,7 @@ enum SystemStatus {
     SYS_INIT,          // 初始化中
     SYS_READY,         // 准备就绪
     SYS_SEQ_DROP,      // 逐个下料中
+    SYS_SEQ_CLOSE,     // 逐个关门中 (新)
     SYS_SETTLE_STABLE, // 沉降稳定中
     SYS_BELT_A,        // 皮带 A 运行中
     SYS_BELT_B         // 皮带 B 步进中
@@ -103,6 +105,11 @@ struct UISnapshot {
     uint8_t       diagTxValue;
     int           diagRxCount;
     char          diagRxHex[128];
+
+    // 皮带诊断同步 (由 AppBeltDiag 填充)
+    bool          beltDiagScanning;   // 是否正在扫描皮带节点
+    bool          beltOnline[2];      // 皮带1和皮带2是否在线
+    bool          beltIsMoving[2];    // 皮带1和皮带2是否正在运行
 };
 
 #endif

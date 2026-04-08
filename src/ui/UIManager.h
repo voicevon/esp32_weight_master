@@ -70,8 +70,14 @@ private:
     lv_obj_t* diag_tx_label = nullptr;   // 故障诊断：发送计数
     lv_obj_t* diag_rx_label = nullptr;   // 故障诊断：十六进制
     lv_obj_t* diag_switch = nullptr;
+    
+    lv_obj_t* belt_diag_switch = nullptr; // 皮带测试模式开关
+    lv_obj_t* belt_scan_btn = nullptr;    // 皮带自检按钮
+    lv_obj_t* belt1_status_indicator = nullptr; // 皮带 1 在线指示灯
+    lv_obj_t* belt2_status_indicator = nullptr; // 皮带 2 在线指示灯
 
     ICommandBus* _bus = nullptr;
+
 
     // --- Performance Optimization (Dirty Check) ---
     UISnapshot _lastSnapshot;

@@ -47,6 +47,10 @@ void AppProduction::onLoop() {
             handleDropState(now);
             break;
 
+        case SYS_SEQ_CLOSE:
+            handleCloseState(now);
+            break;
+
         case SYS_SETTLE_STABLE:
             handleSettleState(now);
             break;
@@ -107,21 +111,40 @@ void AppProduction::handleReadyState(unsigned long now) {
     
     _dischargeIndex = 0;
     _lastCombinedWeight = res.totalWeight;
+    _stateStartTime = now; // 记录序列开启的起始时刻 (重要)
     updateUIState(SYS_SEQ_DROP, mask, res.totalWeight);
     Serial.printf("[AppProduction] Combined: %.1f g, Mask: 0x%08X\n", res.totalWeight, mask);
 }
 
 void AppProduction::handleDropState(unsigned long now) {
-    // 异步逐个分发下料指令
+    // 异步逐个分发下料指令 (开启舵机)
     if (_dischargeIndex < (int)_selectedIds.size()) {
         int nodeId = _selectedIds[_dischargeIndex];
-        bool sent = _rs485->asyncWrite(nodeId, 0x0100, 5, [this](Modbus::ResultCode res, uint16_t tid, void* data) {
+        bool sent = _rs485->asyncWrite(nodeId, REG_CMD_CONTROL, CMD_SERVO_OPEN, [this](Modbus::ResultCode res, uint16_t tid, void* data) {
+            this->_dischargeIndex++;
+            return true;
+        });
+    } 
+    // 所有开启指令已发出，但需等待足够的开启时长 (DISCHARGE_MIN_DURATION_MS)
+    else if (now - _stateStartTime >= DISCHARGE_MIN_DURATION_MS) {
+        _dischargeIndex = 0; // 重置索引，用于后续逐个关闭
+        updateUIState(SYS_SEQ_CLOSE);
+    }
+}
+
+void AppProduction::handleCloseState(unsigned long now) {
+    // 异步逐个分发关闭指令
+    if (_dischargeIndex < (int)_selectedIds.size()) {
+        int nodeId = _selectedIds[_dischargeIndex];
+        bool sent = _rs485->asyncWrite(nodeId, REG_CMD_CONTROL, CMD_SERVO_CLOSE, [this](Modbus::ResultCode res, uint16_t tid, void* data) {
             this->_dischargeIndex++;
             return true;
         });
     } else {
+        // 所有舵机关闭完成后，启动皮带运行
+        _conveyor->collectFromUnits();
         _stateStartTime = now;
-        updateUIState(SYS_SETTLE_STABLE);
+        updateUIState(SYS_BELT_A);
     }
 }
 
@@ -158,6 +181,7 @@ void AppProduction::updateUIState(SystemStatus status, uint32_t mask, float weig
     switch (status) {
         case SYS_READY:         strncpy(_ctx->prog.statusText, "就绪", 32); break;
         case SYS_SEQ_DROP:      strncpy(_ctx->prog.statusText, "逐个下料中", 32); break;
+        case SYS_SEQ_CLOSE:     strncpy(_ctx->prog.statusText, "逐个关闭中", 32); break;
         case SYS_SETTLE_STABLE: strncpy(_ctx->prog.statusText, "沉降稳定中", 32); break;
         case SYS_BELT_A:        strncpy(_ctx->prog.statusText, "收集皮带运行", 32); break;
         case SYS_BELT_B:        strncpy(_ctx->prog.statusText, "步进输出运行", 32); break;

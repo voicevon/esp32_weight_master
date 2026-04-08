@@ -11,6 +11,7 @@
 #include "ui/UIManager.h"
 
 class ModbusMaster;
+class BeltManager;
 class PollManager;
 
 /**
@@ -20,7 +21,7 @@ class PollManager;
  */
 class AppDispatcher : public ICommandBus {
 public:
-    AppDispatcher(SystemContext* ctx, ModbusMaster* rs485, PollManager* pollMgr, UIManager* ui);
+    AppDispatcher(SystemContext* ctx, ModbusMaster* rs485, PollManager* pollMgr, UIManager* ui, BeltManager* conveyor);
 
     void registerApp(IApp* app);
     void begin(OperationMode initialMode = MODE_PRODUCTION);
@@ -31,6 +32,8 @@ public:
     void cmdToggleDiagnosis(bool active) override;
     void cmdServoTest(int id, bool open) override;
     void cmdGlobalServo(bool open) override;
+    void cmdBeltTest(int beltId, int distanceMm) override;
+    void cmdTriggerBeltScan() override;
     void cmdUpdateTargets(float dMin, float dMax) override;
 
     // 模式控制
@@ -42,6 +45,7 @@ private:
     ModbusMaster*         _rs485;
     PollManager*          _pollMgr;
     UIManager*            _ui;
+    BeltManager*          _conveyor;
 
     // App 管理
     std::vector<IApp*>    _apps;

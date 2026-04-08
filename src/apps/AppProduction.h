@@ -52,6 +52,7 @@ private:
     void handlePolling();
     void handleReadyState(unsigned long now);
     void handleDropState(unsigned long now);
+    void handleCloseState(unsigned long now);
     void handleSettleState(unsigned long now);
     void handleBeltAState(unsigned long now);
     void handleBeltBState(unsigned long now);

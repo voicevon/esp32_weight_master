@@ -1,5 +1,6 @@
 #include "apps/AppSequentialCtrl.h"
 #include "logic/PollManager.h"
+#include "system/SystemConfig.h"
 #include <Arduino.h>
 
 void AppSequentialCtrl::onEnter() {
@@ -12,13 +13,13 @@ void AppSequentialCtrl::onEnter() {
     // 根据 Action 载入轻量级配置 (Data-Driven mapping)
     switch (_pendingAction) {
         case ACT_GLOBAL_TARE:
-            _curConfig = { 0x0100, 3, 0, "TARE" };
+            _curConfig = { REG_CMD_CONTROL, CMD_TARE, 0, "TARE" };
             break;
         case ACT_GLOBAL_OPEN:
-            _curConfig = { 0x0100, 1, 150, "SERVO_OPEN" };
+            _curConfig = { REG_CMD_CONTROL, CMD_SERVO_OPEN, 150, "SERVO_OPEN" };
             break;
         case ACT_GLOBAL_CLOSE:
-            _curConfig = { 0x0100, 2, 150, "SERVO_CLOSE" };
+            _curConfig = { REG_CMD_CONTROL, CMD_SERVO_CLOSE, 150, "SERVO_CLOSE" };
             break;
         default:
             Serial.println("[AppSequentialCtrl] Unknown Action, finishing immediately.");

@@ -15,23 +15,32 @@ public:
     
     /**
      * @brief 一级带：长位移收料并转运至二级带入料口
+     * @param pulses 相对移动脉冲数（默认 30000）
      */
-    void collectFromUnits();
+    void collectFromUnits(int32_t pulses = 30000);
     
     /**
      * @brief 二级带：短位移步进步进
+     * @param pulses 相对移动脉冲数（默认 5000）
      */
-    void advanceOutput();
+    void advanceOutput(int32_t pulses = 5000);
     
     /**
      * @brief 获取电机当前是否在运行
      */
     bool isMoving();
 
+    // 辅助测试接口：按毫米为单位控制特定皮带
+    void moveDistanceMm(uint8_t id, int32_t mm);
+
+    int getMotorId(int index) const { return index == 0 ? _id1 : _id2; }
+
 private:
     ModbusMaster* _rs485;
     int _id1, _id2;
-    uint32_t _currentPos1, _currentPos2;
+
+    // 底层相对位移发送逻辑
+    void moveRelative(uint8_t id, int32_t pulses);
 };
 
 #endif // BELT_MANAGER_H

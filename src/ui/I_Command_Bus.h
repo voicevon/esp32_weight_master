@@ -19,6 +19,8 @@ public:
     virtual void cmdToggleDiagnosis(bool active) = 0;
     virtual void cmdServoTest(int id, bool open) = 0;
     virtual void cmdGlobalServo(bool open) = 0;
+    virtual void cmdBeltTest(int beltId, int distanceMm) = 0;
+    virtual void cmdTriggerBeltScan() = 0;
     virtual void updateOperationMode(OperationMode mode) = 0;
 };
 

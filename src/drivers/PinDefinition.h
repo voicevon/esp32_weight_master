@@ -28,10 +28,5 @@
 // --- Modbus 寄存器地址 (必须与从机保持一致) ---
 #define REG_WEIGHT_H    0x0000  // 称重值高位 (Float)
 #define REG_STATUS      0x0002  // 运行状态
-#define REG_CTRL_CMD    0x0100  // 控制指令 (1:开, 2:关, 3:去皮, 4:标定, 5:脉冲开启)
-#define CMD_OPEN_1S     5
-#define CMD_SERVO_OPEN  1
-#define CMD_SERVO_CLOSE 2
-#define CMD_TARE        3
 
 #endif // PIN_DEFINITION_H
