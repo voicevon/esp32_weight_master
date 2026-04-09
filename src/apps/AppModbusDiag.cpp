@@ -1,11 +1,8 @@
 #include "AppModbusDiag.h"
 #include <Arduino.h>
+#include "logic/Belt.h"
 
-// 寄存器地址定义 (参考 Belt)
-#define REG_POS1_REV     0x0202
-#define REG_POS1_PULSE   0x0203
-#define REG_VIRTUAL_IO   0x011F
-#define PULSES_PER_MM    100
+// 寄存器地址由 Belt.h 提供定义
 
 AppModbusDiag::AppModbusDiag(SystemContext* ctx, ModbusMaster* rs485)
     : _ctx(ctx), _rs485(rs485) {}
@@ -99,8 +96,8 @@ void AppModbusDiag::triggerAction(int actionId) {
 
 void AppModbusDiag::sendMotorMove(int distance) {
     int32_t pulses = (int32_t)distance * PULSES_PER_MM;
-    int16_t revs = pulses / 10000;
-    int16_t pls  = pulses % 10000;
+    int16_t revs = pulses / PULSES_PER_REV;
+    int16_t pls  = pulses % PULSES_PER_REV;
 
     char msg[64];
     snprintf(msg, sizeof(msg), "MOVE %dmm ID:%d", distance, _targetId);
@@ -108,6 +105,7 @@ void AppModbusDiag::sendMotorMove(int distance) {
 
     _rs485->syncWrite(_targetId, REG_POS1_REV, (uint16_t)revs);
     _rs485->syncWrite(_targetId, REG_POS1_PULSE, (uint16_t)pls);
+    _rs485->syncWrite(_targetId, REG_POS1_SPEED, 150); // 设定速度
     _rs485->syncWrite(_targetId, REG_VIRTUAL_IO, 0);
     _rs485->syncWrite(_targetId, REG_VIRTUAL_IO, 1);
 }

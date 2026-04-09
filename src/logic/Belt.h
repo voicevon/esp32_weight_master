@@ -26,7 +26,7 @@ enum BeltStatus {
 #define PULSES_PER_REV   10000
 
 // 皮带诊断专用的机械转换率宏定议：假设 1 毫米 = 100 脉冲 (可根据需要调整)
-#define PULSES_PER_MM    100
+#define PULSES_PER_MM    400
 
 /**
  * @class Belt

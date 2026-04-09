@@ -75,12 +75,14 @@ void AppDispatcher::cmdServoTest(int id, bool open) {
     _pollMgr->setServoState(id, open);
 }
 
-void AppDispatcher::cmdBeltTest(int beltId, int distanceMm) {
+void AppDispatcher::cmdBeltTest(int beltIndex, int distanceMm) {
+    if (beltIndex != 0 && beltIndex != 1) return;
+
     auto app = findApp(MODE_BELT_DIAG);
     if (app && _currentMode == MODE_BELT_DIAG) {
-        static_cast<AppBeltDiag*>(app)->triggerRun(beltId, distanceMm);
+        static_cast<AppBeltDiag*>(app)->triggerRun(beltIndex, distanceMm);
     } else {
-        Belt* target = (beltId == 0) ? _b1 : _b2;
+        Belt* target = (beltIndex == 0) ? _b1 : _b2;
         if (target) target->moveDistanceMm(distanceMm);
     }
 }

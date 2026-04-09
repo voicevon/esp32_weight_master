@@ -21,9 +21,10 @@ void Belt::moveRelative(int32_t pulses) {
     int16_t revs = pulses / PULSES_PER_REV;
     int16_t pls  = pulses % PULSES_PER_REV;
     
-    // 顺序压入 4 个指令任务
+    // 顺序压入 5 个指令任务
     pushTask(REG_POS1_REV, (uint16_t)revs, false);
     pushTask(REG_POS1_PULSE, (uint16_t)pls, false);
+    pushTask(REG_POS1_SPEED, 800, false); // 设定运动速度为 150
     pushTask(REG_VIRTUAL_IO, 0, false);
     pushTask(REG_VIRTUAL_IO, 1, false);
 }

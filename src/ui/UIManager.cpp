@@ -193,7 +193,7 @@ static void btn_belt1_test_cb(lv_event_t * e) {
     const char* text = lv_label_get_text(label);
     int dist = atoi(text);
     if (dist > 0 && ui && ui->getBus()) {
-        ui->getBus()->cmdBeltTest(MOTOR_ID_BELT1, dist);
+        ui->getBus()->cmdBeltTest(0, dist); // 使用逻辑索引 0 (一级皮带)
     }
 }
 
@@ -204,7 +204,7 @@ static void btn_belt2_test_cb(lv_event_t * e) {
     const char* text = lv_label_get_text(label);
     int dist = atoi(text);
     if (dist > 0 && ui && ui->getBus()) {
-        ui->getBus()->cmdBeltTest(MOTOR_ID_BELT2, dist);
+        ui->getBus()->cmdBeltTest(1, dist); // 使用逻辑索引 1 (二级皮带)
     }
 }
 
@@ -648,40 +648,45 @@ void UIManager::buildAdminView(lv_obj_t* parent) {
     lv_obj_center(lbl_bscan);
 
     // 一级与二级带控制区域
-    struct BeltConfig { const char* name; int y; lv_obj_t** indicator; lv_event_cb_t cb; uint32_t color; };
-    BeltConfig configs[] = {
-        {"1级收集带 (ID: 21)", 45, &belt1_status_indicator, btn_belt1_test_cb, 0x0284C7},
-        {"2级输出带 (ID: 22)", 180, &belt2_status_indicator, btn_belt2_test_cb, 0x059669}
-    };
+    const char* belt_names[] = {"1级收集带", "2级输出带"};
+    int belt_ids[] = {MOTOR_ID_BELT1, MOTOR_ID_BELT2};
+    lv_obj_t** indicators[] = {&belt1_status_indicator, &belt2_status_indicator};
+    lv_event_cb_t callbacks[] = {btn_belt1_test_cb, btn_belt2_test_cb};
+    uint32_t colors[] = {0x0284C7, 0x059669};
 
-    for (const auto& cfg : configs) {
+    for (int i = 0; i < 2; i++) {
+        int y = 50 + i * 140; // 适当调整间距避免重叠
+        
+        char buf[64];
+        snprintf(buf, sizeof(buf), "%s (ID: %d)", belt_names[i], belt_ids[i]);
+
         lv_obj_t* l = lv_label_create(belt_cont);
         lv_obj_set_style_text_font(l, &ui_font_chs_16, 0);
         lv_obj_set_style_text_color(l, lv_color_hex(0x94A3B8), 0);
-        lv_label_set_text(l, cfg.name);
-        lv_obj_align(l, LV_ALIGN_TOP_LEFT, 10, cfg.y);
+        lv_label_set_text(l, buf);
+        lv_obj_align(l, LV_ALIGN_TOP_LEFT, 10, y);
 
-        *cfg.indicator = lv_label_create(belt_cont);
-        lv_obj_set_style_text_font(*cfg.indicator, &ui_font_chs_16, 0);
-        lv_obj_set_style_text_color(*cfg.indicator, lv_color_white(), 0);
-        lv_obj_set_style_bg_color(*cfg.indicator, lv_color_hex(0x475569), 0);
-        lv_obj_set_style_bg_opa(*cfg.indicator, LV_OPA_COVER, 0);
-        lv_obj_set_style_radius(*cfg.indicator, 4, 0);
-        lv_obj_set_style_pad_hor(*cfg.indicator, 12, 0);
-        lv_obj_set_style_pad_ver(*cfg.indicator, 4, 0);
-        lv_label_set_text(*cfg.indicator, "等待扫描");
-        lv_obj_align(*cfg.indicator, LV_ALIGN_TOP_LEFT, 260, cfg.y - 4); // 向右移动，避免重叠
+        *indicators[i] = lv_label_create(belt_cont);
+        lv_obj_set_style_text_font(*indicators[i], &ui_font_chs_16, 0);
+        lv_obj_set_style_text_color(*indicators[i], lv_color_white(), 0);
+        lv_obj_set_style_bg_color(*indicators[i], lv_color_hex(0x475569), 0);
+        lv_obj_set_style_bg_opa(*indicators[i], LV_OPA_COVER, 0);
+        lv_obj_set_style_radius(*indicators[i], 4, 0);
+        lv_obj_set_style_pad_hor(*indicators[i], 12, 0);
+        lv_obj_set_style_pad_ver(*indicators[i], 4, 0);
+        lv_label_set_text(*indicators[i], "等待扫描");
+        lv_obj_align(*indicators[i], LV_ALIGN_TOP_LEFT, 260, y - 4);
 
         const char* dists[] = {"100mm", "200mm", "500mm", "1000mm"};
-        for (int i=0; i<4; i++) {
+        for (int j = 0; j < 4; j++) {
             lv_obj_t* btn = lv_btn_create(belt_cont);
             lv_obj_set_size(btn, 170, 70);
-            lv_obj_align(btn, LV_ALIGN_TOP_LEFT, 10 + i * 185, cfg.y + 40);
-            lv_obj_set_style_bg_color(btn, lv_color_hex(cfg.color), 0);
-            lv_obj_add_event_cb(btn, cfg.cb, LV_EVENT_CLICKED, this);
+            lv_obj_align(btn, LV_ALIGN_TOP_LEFT, 10 + j * 185, y + 40);
+            lv_obj_set_style_bg_color(btn, lv_color_hex(colors[i]), 0);
+            lv_obj_add_event_cb(btn, callbacks[i], LV_EVENT_CLICKED, this);
             lv_obj_t* lb = lv_label_create(btn);
             lv_obj_set_style_text_font(lb, &lv_font_montserrat_26, 0);
-            lv_label_set_text(lb, dists[i]);
+            lv_label_set_text(lb, dists[j]);
             lv_obj_center(lb);
         }
     }
