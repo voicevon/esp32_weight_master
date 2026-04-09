@@ -1,7 +1,7 @@
 #include "AppModbusDiag.h"
 #include <Arduino.h>
 
-// 寄存器地址定义 (参考 BeltManager)
+// 寄存器地址定义 (参考 Belt)
 #define REG_POS1_REV     0x0202
 #define REG_POS1_PULSE   0x0203
 #define REG_VIRTUAL_IO   0x011F

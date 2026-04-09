@@ -7,7 +7,7 @@
 #include "drivers/TouchScreen.h"
 #include "drivers/PinDefinition.h"
 #include "logic/CombinationEngine.h"
-#include "logic/BeltManager.h"
+#include "logic/Belt.h"
 
 // Apps
 #include "apps/AppDispatcher.h"
@@ -28,19 +28,20 @@ ModbusMaster       rs485(PIN_RS485_RX, PIN_RS485_TX, PIN_RS485_TX_EN, RS485_BAUD
 // --- 业务层 ---
 PollManager        pollManager(&rs485);
 CombinationEngine  engine(290.0f, 310.0f);
-BeltManager        conveyor(&rs485, MOTOR_ID_BELT1, MOTOR_ID_BELT2);
+Belt               beltPrimary(&rs485, MOTOR_ID_BELT1);
+Belt               beltSecondary(&rs485, MOTOR_ID_BELT2);
 
 // --- 核心调度器 ---
-AppDispatcher      dispatcher(&sysCtx, &rs485, &pollManager, &ui, &conveyor);
+AppDispatcher      dispatcher(&sysCtx, &rs485, &pollManager, &ui, &beltPrimary, &beltSecondary);
 
 // --- 互斥锁 (共享状态同步) ---
 SemaphoreHandle_t  mutexCtx;
 
 // --- 具体应用实例 ---
-AppProduction      appProduction(&sysCtx, &pollManager, &rs485, &engine, &conveyor, nullptr);
+AppProduction      appProduction(&sysCtx, &pollManager, &rs485, &engine, &beltPrimary, &beltSecondary, nullptr);
 AppScan            appScan(&sysCtx, &pollManager, &rs485, nullptr);
 AppSequentialCtrl  appSeqCtrl(&sysCtx, &rs485, &pollManager, nullptr);
-AppBeltDiag        appBeltDiag(&sysCtx, &rs485, &conveyor, nullptr);
+AppBeltDiag        appBeltDiag(&sysCtx, &rs485, &beltPrimary, &beltSecondary, nullptr);
 AppModbusDiag      appModbusDiag(&sysCtx, &rs485);
 
 void setup() {
@@ -60,10 +61,10 @@ void setup() {
     }
 
     // 重新注入互斥锁与状态上下文
-    appProduction = AppProduction(&sysCtx, &pollManager, &rs485, &engine, &conveyor, mutexCtx);
+    appProduction = AppProduction(&sysCtx, &pollManager, &rs485, &engine, &beltPrimary, &beltSecondary, mutexCtx);
     appScan       = AppScan(&sysCtx, &pollManager, &rs485, mutexCtx);
     appSeqCtrl    = AppSequentialCtrl(&sysCtx, &rs485, &pollManager, mutexCtx);
-    appBeltDiag   = AppBeltDiag(&sysCtx, &rs485, &conveyor, mutexCtx);
+    appBeltDiag   = AppBeltDiag(&sysCtx, &rs485, &beltPrimary, &beltSecondary, mutexCtx);
     appModbusDiag = AppModbusDiag(&sysCtx, &rs485); // 分配给调度器
 
     // 注册应用

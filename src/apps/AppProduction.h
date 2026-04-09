@@ -9,7 +9,7 @@
 class PollManager;
 class ModbusMaster;
 class CombinationEngine;
-class BeltManager;
+class Belt;
 
 /**
  * @class AppProduction
@@ -19,7 +19,7 @@ class BeltManager;
 class AppProduction : public IApp {
 public:
     AppProduction(SystemContext* ctx, PollManager* pollMgr, ModbusMaster* rs485,
-                  CombinationEngine* engine, BeltManager* conveyor,
+                  CombinationEngine* engine, Belt* b1, Belt* b2,
                   SemaphoreHandle_t mutex);
 
     // IApp 接口实现
@@ -36,7 +36,8 @@ private:
     PollManager*        _pollMgr;
     ModbusMaster*       _rs485;
     CombinationEngine*  _engine;
-    BeltManager*        _conveyor;
+    Belt*               _b1;
+    Belt*               _b2;
     SemaphoreHandle_t   _mutex;
 
     Preferences         _nvs;

@@ -11,7 +11,7 @@
 #include "ui/UIManager.h"
 
 class ModbusMaster;
-class BeltManager;
+class Belt;
 class PollManager;
 
 /**
@@ -21,7 +21,7 @@ class PollManager;
  */
 class AppDispatcher : public ICommandBus {
 public:
-    AppDispatcher(SystemContext* ctx, ModbusMaster* rs485, PollManager* pollMgr, UIManager* ui, BeltManager* conveyor);
+    AppDispatcher(SystemContext* ctx, ModbusMaster* rs485, PollManager* pollMgr, UIManager* ui, Belt* b1, Belt* b2);
 
     void registerApp(IApp* app);
     void begin(OperationMode initialMode = MODE_PRODUCTION);
@@ -51,7 +51,8 @@ private:
     ModbusMaster*         _rs485;
     PollManager*          _pollMgr;
     UIManager*            _ui;
-    BeltManager*          _conveyor;
+    Belt*                 _b1;
+    Belt*                 _b2;
 
     // App 管理
     std::vector<IApp*>    _apps;

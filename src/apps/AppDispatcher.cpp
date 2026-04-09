@@ -3,7 +3,7 @@
 #include "system/SystemContext.h"
 #include "drivers/ModbusMaster.h"
 #include "logic/PollManager.h"
-#include "logic/BeltManager.h"
+#include "logic/Belt.h"
 #include "apps/AppProduction.h"
 #include "apps/AppScan.h"
 #include "apps/AppServoTest.h"
@@ -11,8 +11,8 @@
 #include "apps/AppModbusDiag.h"
 #include "apps/AppSequentialCtrl.h"
 
-AppDispatcher::AppDispatcher(SystemContext* ctx, ModbusMaster* rs485, PollManager* pollMgr, UIManager* ui, BeltManager* conveyor)
-    : _ctx(ctx), _rs485(rs485), _pollMgr(pollMgr), _ui(ui), _conveyor(conveyor) {
+AppDispatcher::AppDispatcher(SystemContext* ctx, ModbusMaster* rs485, PollManager* pollMgr, UIManager* ui, Belt* b1, Belt* b2)
+    : _ctx(ctx), _rs485(rs485), _pollMgr(pollMgr), _ui(ui), _b1(b1), _b2(b2) {
     _mutexCtx = xSemaphoreCreateMutex();
 }
 
@@ -79,8 +79,9 @@ void AppDispatcher::cmdBeltTest(int beltId, int distanceMm) {
     auto app = findApp(MODE_BELT_DIAG);
     if (app && _currentMode == MODE_BELT_DIAG) {
         static_cast<AppBeltDiag*>(app)->triggerRun(beltId, distanceMm);
-    } else if (_conveyor) { // 兼容旧有的全局调用方式（非独占模式下直接调）
-        _conveyor->moveDistanceMm(beltId, distanceMm);
+    } else {
+        Belt* target = (beltId == 0) ? _b1 : _b2;
+        if (target) target->moveDistanceMm(distanceMm);
     }
 }
 

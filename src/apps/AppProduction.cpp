@@ -5,12 +5,12 @@
 #include "logic/PollManager.h"
 #include "drivers/ModbusMaster.h"
 #include "logic/CombinationEngine.h"
-#include "logic/BeltManager.h"
+#include "logic/Belt.h"
 
 AppProduction::AppProduction(SystemContext* ctx, PollManager* pollMgr, ModbusMaster* rs485,
-                             CombinationEngine* engine, BeltManager* conveyor,
+                             CombinationEngine* engine, Belt* b1, Belt* b2,
                              SemaphoreHandle_t mutex)
-    : _ctx(ctx), _pollMgr(pollMgr), _rs485(rs485), _engine(engine), _conveyor(conveyor), _mutex(mutex)
+    : _ctx(ctx), _pollMgr(pollMgr), _rs485(rs485), _engine(engine), _b1(b1), _b2(b2), _mutex(mutex)
 {
 }
 
@@ -142,7 +142,7 @@ void AppProduction::handleCloseState(unsigned long now) {
         });
     } else {
         // 所有舵机关闭完成后，启动皮带运行
-        _conveyor->collectFromUnits();
+        _b1->moveRelative(30000);
         _stateStartTime = now;
         updateUIState(SYS_BELT_A);
     }
@@ -150,7 +150,7 @@ void AppProduction::handleCloseState(unsigned long now) {
 
 void AppProduction::handleSettleState(unsigned long now) {
     if (now - _stateStartTime >= DISCHARGE_SETTLE_MS) {
-        _conveyor->collectFromUnits();
+        _b1->moveRelative(30000);
         _stateStartTime = now;
         updateUIState(SYS_BELT_A);
     }
@@ -158,7 +158,7 @@ void AppProduction::handleSettleState(unsigned long now) {
 
 void AppProduction::handleBeltAState(unsigned long now) {
     if (now - _stateStartTime >= BELT_COLLECT_PERIOD_MS) {
-        _conveyor->advanceOutput();
+        _b2->moveRelative(5000);
         _stateStartTime = now;
         updateUIState(SYS_BELT_B);
     }
