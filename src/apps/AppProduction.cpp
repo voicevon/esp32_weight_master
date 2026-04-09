@@ -5,7 +5,7 @@
 #include "logic/PollManager.h"
 #include "drivers/ModbusMaster.h"
 #include "logic/CombinationEngine.h"
-#include "logic/Belt.h"
+#include "drivers/Belt.h"
 
 AppProduction::AppProduction(SystemContext* ctx, PollManager* pollMgr, ModbusMaster* rs485,
                              CombinationEngine* engine, Belt* b1, Belt* b2,

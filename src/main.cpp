@@ -7,7 +7,7 @@
 #include "drivers/TouchScreen.h"
 #include "drivers/PinDefinition.h"
 #include "logic/CombinationEngine.h"
-#include "logic/Belt.h"
+#include "drivers/Belt.h"
 
 // Apps
 #include "apps/AppDispatcher.h"

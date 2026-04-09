@@ -3,7 +3,7 @@
 #include "system/SystemContext.h"
 #include "drivers/ModbusMaster.h"
 #include "logic/PollManager.h"
-#include "logic/Belt.h"
+#include "drivers/Belt.h"
 #include "apps/AppProduction.h"
 #include "apps/AppScan.h"
 #include "apps/AppServoTest.h"

@@ -1,6 +1,6 @@
 #include "AppModbusDiag.h"
 #include <Arduino.h>
-#include "logic/Belt.h"
+#include "drivers/Belt.h"
 
 // 寄存器地址由 Belt.h 提供定义
 

@@ -4,7 +4,7 @@
 #include "apps/IApp.h"
 #include "system/SystemContext.h"
 #include "drivers/ModbusMaster.h"
-#include "logic/Belt.h"
+#include "drivers/Belt.h"
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
