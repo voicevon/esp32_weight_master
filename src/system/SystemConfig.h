@@ -27,7 +27,7 @@
 
 // --- Modbus 系统指令字 ---
 #define REG_CMD_CONTROL             0x0100 // 总线控制寄存器
-#define REG_BELT_REV                0x0202 // 皮带伺服圈数寄存器 (用于测试连通性)
+#define REG_BELT_REV                0x0000 // 皮带伺服寄存器 (临时改为 0x0100 测试连通性)
 #define CMD_SERVO_OPEN              1      // 舵机开启
 #define CMD_SERVO_CLOSE             2      // 舵机关闭
 #define CMD_TARE                    3      // 节点去皮

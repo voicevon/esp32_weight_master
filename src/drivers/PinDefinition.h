@@ -22,7 +22,7 @@
 
 // --- 从机与电机 ID 分配 ---
 #define NUM_SLAVES      20  // 称重单元总数 (1-10，或者之前的 20)
-#define MOTOR_ID_BELT1  21  // 收集带 (一级)
+#define MOTOR_ID_BELT1  01  // 收集带 (一级)
 #define MOTOR_ID_BELT2  22  // 输出带 (二级)
 
 // --- Modbus 寄存器地址 (必须与从机保持一致) ---

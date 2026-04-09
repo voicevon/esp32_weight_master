@@ -86,6 +86,7 @@ private:
 
     uint32_t _packetsSent = 0;
     uint32_t _packetsDropped = 0;
+    uint32_t _charTimeUs = 0; 
 
     // 私有辅助函数
     uint16_t calculateCRC(uint8_t* buf, int len);
