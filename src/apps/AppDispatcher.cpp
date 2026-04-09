@@ -183,6 +183,10 @@ void AppDispatcher::controlLoop() {
                 updateOperationMode(MODE_PRODUCTION);
             }
         }
+
+        // 驱动皮带异步任务队列
+        if (_b1) _b1->update();
+        if (_b2) _b2->update();
         vTaskDelay(pdMS_TO_TICKS(1));
     }
 }

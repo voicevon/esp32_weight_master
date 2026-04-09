@@ -3,6 +3,7 @@
 
 #include "drivers/ModbusMaster.h"
 #include <functional>
+#include <deque>
 
 /**
  * @enum BeltStatus
@@ -29,7 +30,7 @@ enum BeltStatus {
 
 /**
  * @class Belt
- * @brief 单个皮带电机驱动类
+ * @brief 单个皮带电机驱动类，内置指令队列与状态机，支持平滑的异步指令序列。
  */
 class Belt {
 public:
@@ -37,22 +38,37 @@ public:
     
     void begin();
     
-    // 基础移动指令
+    // 核心更新接口：需在主循环中高频调用
+    void update();
+
+    // 基础指令 (推入队列)
     void moveRelative(int32_t pulses);
     void moveDistanceMm(int32_t mm);
 
-    // 在线探测 (异步)
+    // 在线探测 (推入队列)
     void scan(std::function<void(bool)> onComplete = nullptr);
 
     uint8_t getId() const { return _id; }
     BeltStatus getStatus() const { return _status; }
     bool isMoving() const { return _status == BELT_MOVING; }
+    bool isQueueEmpty() const { return _taskQueue.empty(); }
 
 private:
+    struct BeltTask {
+        uint16_t reg;
+        uint16_t value;
+        bool isRead;
+        std::function<void(bool)> onDone;
+    };
+
     ModbusMaster* _rs485;
     uint8_t       _id;
     BeltStatus    _status;
     uint16_t      _scanBuffer;
+    
+    std::deque<BeltTask> _taskQueue;
+
+    void pushTask(uint16_t reg, uint16_t val, bool isRead, std::function<void(bool)> onDone = nullptr);
 };
 
 #endif // BELT_H

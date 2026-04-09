@@ -220,38 +220,42 @@ void ModbusMaster::modbusTask(void* param) {
                             for (int i = 0; i < byteCount / 2; i++) {
                                 dest[i] = (instance->_rxBuf[3 + i * 2] << 8) | instance->_rxBuf[4 + i * 2];
                             }
-                            if (instance->_pendingCb) {
-                                instance->_pendingCb(Modbus::EX_SUCCESS, instance->_lastTid, instance->_pendingData);
-                                instance->_pendingCb = nullptr;
-                            }
                             instance->_status = ST_SUCCESS;
+                            if (instance->_pendingCb) {
+                                cbTransaction cb = instance->_pendingCb;
+                                instance->_pendingCb = nullptr;
+                                cb(Modbus::EX_SUCCESS, instance->_lastTid, instance->_pendingData);
+                            }
                         } else if (fn == 0x06) { // 写回复 (Echo)
-                            if (instance->_pendingCb) {
-                                instance->_pendingCb(Modbus::EX_SUCCESS, instance->_lastTid, nullptr);
-                                instance->_pendingCb = nullptr;
-                            }
                             instance->_status = ST_SUCCESS;
+                            if (instance->_pendingCb) {
+                                cbTransaction cb = instance->_pendingCb;
+                                instance->_pendingCb = nullptr;
+                                cb(Modbus::EX_SUCCESS, instance->_lastTid, nullptr);
+                            }
                         }
                     } else {
                         Serial.printf("[ModbusMaster] CRC ERROR from ID:%d (Calc:%04X, Rx:%04X)\n", 
                                       instance->_rxBuf[0], calcCrc, rxCrc);
-                        if (instance->_pendingCb) {
-                            instance->_pendingCb(Modbus::EX_ERROR, instance->_lastTid, nullptr);
-                            instance->_pendingCb = nullptr;
-                        }
                         instance->_status = ST_ERROR;
+                        if (instance->_pendingCb) {
+                            cbTransaction cb = instance->_pendingCb;
+                            instance->_pendingCb = nullptr;
+                            cb(Modbus::EX_ERROR, instance->_lastTid, nullptr);
+                        }
                     }
                 } else {
                     // Short frame log removed
                 }
             } else if (millis() - instance->_lastPollTime > 2000) { // 放宽到 2s
                 Serial.printf("[ModbusMaster] TIMEOUT waiting for ID:%d\n", instance->_lastTid);
-                if (instance->_pendingCb) {
-                    instance->_pendingCb(Modbus::EX_TIMEOUT, instance->_lastTid, instance->_pendingData);
-                    instance->_pendingCb = nullptr;
-                }
                 instance->_status = ST_TIMEOUT;
                 instance->_packetsDropped++;
+                if (instance->_pendingCb) {
+                    cbTransaction cb = instance->_pendingCb;
+                    instance->_pendingCb = nullptr;
+                    cb(Modbus::EX_TIMEOUT, instance->_lastTid, instance->_pendingData);
+                }
             }
         }
         vTaskDelay(pdMS_TO_TICKS(5));

@@ -1,34 +1,31 @@
 #include "Belt.h"
+#include <Arduino.h>
 
 Belt::Belt(ModbusMaster* rs485, uint8_t motorId)
     : _rs485(rs485), _id(motorId), _status(BELT_OFFLINE) {
 }
 
 void Belt::begin() {
-    // 初始化逻辑：目前伺服重启后已根据物理参数配置为增量式位置指令模式 (P4-0=1)
+    _taskQueue.clear();
+    _status = BELT_OFFLINE;
+}
+
+void Belt::pushTask(uint16_t reg, uint16_t val, bool isRead, std::function<void(bool)> onDone) {
+    _taskQueue.push_back({reg, val, isRead, onDone});
 }
 
 void Belt::moveRelative(int32_t pulses) {
-    if (!_rs485) return;
-    
     _status = BELT_MOVING;
 
     // 拆分圈数和圈内脉冲数
     int16_t revs = pulses / PULSES_PER_REV;
     int16_t pls  = pulses % PULSES_PER_REV;
     
-    // 指令发送回调 (目前仅用于确认发送)
-    auto logCb = [this](Modbus::ResultCode res, uint16_t tid, void* data) { 
-        return true; 
-    };
-
-    // 1. 设置指令 1 的相对圈数和脉冲数
-    _rs485->asyncWrite(_id, REG_POS1_REV, (uint16_t)revs, logCb);
-    _rs485->asyncWrite(_id, REG_POS1_PULSE, (uint16_t)pls, logCb);
-    
-    // 2. 触发虚拟端子运行 (0x011F 先写 0 复位沿信号，再写 1 触发位置 1)
-    _rs485->asyncWrite(_id, REG_VIRTUAL_IO, 0, logCb);
-    _rs485->asyncWrite(_id, REG_VIRTUAL_IO, 1, logCb);
+    // 顺序压入 4 个指令任务
+    pushTask(REG_POS1_REV, (uint16_t)revs, false);
+    pushTask(REG_POS1_PULSE, (uint16_t)pls, false);
+    pushTask(REG_VIRTUAL_IO, 0, false);
+    pushTask(REG_VIRTUAL_IO, 1, false);
 }
 
 void Belt::moveDistanceMm(int32_t mm) {
@@ -37,17 +34,46 @@ void Belt::moveDistanceMm(int32_t mm) {
 }
 
 void Belt::scan(std::function<void(bool)> onComplete) {
-    if (!_rs485) return;
-
-    _status = BELT_OFFLINE; // 扫描前先重置
-    _rs485->asyncRead(_id, REG_POS1_REV, 1, [this, onComplete](Modbus::ResultCode res, uint16_t tid, void* data) {
-        bool success = (res == Modbus::EX_SUCCESS);
+    // 扫描任务逻辑
+    auto wrapCb = [this, onComplete](bool success) {
         if (success) {
             this->_status = BELT_READY;
         } else {
-            this->_status = (res == Modbus::EX_TIMEOUT) ? BELT_OFFLINE : BELT_FAULT;
+            this->_status = BELT_OFFLINE;
         }
         if (onComplete) onComplete(success);
-        return true;
-    }, &_scanBuffer);
+    };
+
+    pushTask(REG_POS1_REV, 0, true, wrapCb);
+}
+
+void Belt::update() {
+    if (_taskQueue.empty()) {
+        // 如果原本是运行中且指令发完，这里可以做一个初步的状态回退（或维持运行由业务确认）
+        if (_status == BELT_MOVING) {
+            // 注意：这里只是指令“发完”，并不代表电机“停稳”。
+            // 工业逻辑中通常需要查询 0x011F 或位置偏差，这里暂维持原样。
+        }
+        return;
+    }
+
+    // 只有总线物理空闲/成功/报错时，才发起队列中的下一条
+    auto mbStatus = _rs485->getStatus();
+    if (mbStatus == ModbusMaster::ST_WAITING) return;
+
+    // 获取并移除任务 (拷贝副本供闭包使用)
+    BeltTask task = _taskQueue.front();
+    _taskQueue.pop_front();
+
+    if (task.isRead) {
+        _rs485->asyncRead(_id, task.reg, 1, [task](Modbus::ResultCode res, uint16_t tid, void* data) {
+            if (task.onDone) task.onDone(res == Modbus::EX_SUCCESS);
+            return true;
+        }, &_scanBuffer);
+    } else {
+        _rs485->asyncWrite(_id, task.reg, task.value, [task](Modbus::ResultCode res, uint16_t tid, void* data) {
+            if (task.onDone) task.onDone(res == Modbus::EX_SUCCESS);
+            return true;
+        });
+    }
 }

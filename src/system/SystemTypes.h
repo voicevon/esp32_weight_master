@@ -116,7 +116,7 @@ struct UISnapshot {
 
     // 皮带诊断同步 (由 AppBeltDiag 填充)
     bool          beltDiagScanning;   // 是否正在扫描皮带节点
-    int8_t        beltStatus[2];      // 0=等待, 1=在线, 2=故障, 3=超时
+    int8_t        beltStatus[2];      // 0=离线, 1=就绪, 2=运行, 3=故障
     bool          beltIsMoving[2];    // 皮带1和皮带2是否正在运行
 
     // 串口助手/Modbus 诊断同步 (由 AppModbusDiag 填充)
