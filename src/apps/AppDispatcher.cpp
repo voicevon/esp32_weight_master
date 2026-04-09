@@ -6,9 +6,10 @@
 #include "logic/BeltManager.h"
 #include "apps/AppProduction.h"
 #include "apps/AppScan.h"
-#include "apps/AppDiagPulse.h"
-#include "apps/AppSequentialCtrl.h"
+#include "apps/AppServoTest.h"
 #include "apps/AppBeltDiag.h"
+#include "apps/AppModbusDiag.h"
+#include "apps/AppSequentialCtrl.h"
 
 AppDispatcher::AppDispatcher(SystemContext* ctx, ModbusMaster* rs485, PollManager* pollMgr, UIManager* ui, BeltManager* conveyor)
     : _ctx(ctx), _rs485(rs485), _pollMgr(pollMgr), _ui(ui), _conveyor(conveyor) {
@@ -62,7 +63,7 @@ void AppDispatcher::cmdGlobalServo(bool open) {
 }
 
 void AppDispatcher::cmdStartScan() {
-    // 模式切换现在由 UIManager 的 Tab 切换事件统一管理
+    updateOperationMode(MODE_DIAG_SCAN);
 }
 
 void AppDispatcher::cmdToggleDiagnosis(bool active) {
@@ -84,17 +85,36 @@ void AppDispatcher::cmdBeltTest(int beltId, int distanceMm) {
 }
 
 void AppDispatcher::cmdTriggerBeltScan() {
-    Serial.println("[Dispatcher] Command: Trigger Belt Scan");
     auto app = findApp(MODE_BELT_DIAG);
     if (app && _currentMode == MODE_BELT_DIAG) {
         static_cast<AppBeltDiag*>(app)->triggerScan();
-    } else {
-        Serial.printf("[Dispatcher] Cannot trigger scan: App found? %d, CurrentMode: %s\n", 
-                      (app != nullptr), modeToStr(_currentMode));
     }
 }
 
+void AppDispatcher::cmdSerialSendHex(const char* hexStr) {
+    IApp* app = findApp(MODE_MODBUS_DIAG);
+    if (app) ((AppModbusDiag*)app)->triggerSendHex(hexStr);
+}
 
+void AppDispatcher::cmdSerialToggleAuto(bool enable) {
+    IApp* app = findApp(MODE_MODBUS_DIAG);
+    if (app) ((AppModbusDiag*)app)->toggleAutoSend(enable);
+}
+
+void AppDispatcher::cmdSetDiagSubMode(int mode) {
+    IApp* app = findApp(MODE_MODBUS_DIAG);
+    if (app) ((AppModbusDiag*)app)->setSubMode((DiagSubMode)mode);
+}
+
+void AppDispatcher::cmdSetDiagTarget(int id) {
+    IApp* app = findApp(MODE_MODBUS_DIAG);
+    if (app) ((AppModbusDiag*)app)->setTargetId(id);
+}
+
+void AppDispatcher::cmdDiagAction(int actionId) {
+    IApp* app = findApp(MODE_MODBUS_DIAG);
+    if (app) ((AppModbusDiag*)app)->triggerAction(actionId);
+}
 
 void AppDispatcher::cmdUpdateTargets(float dMin, float dMax) {
     auto app = findApp(MODE_PRODUCTION);
@@ -193,6 +213,10 @@ void AppDispatcher::uiLoop() {
                 _ctx->ui.beltDiagScanning = static_cast<AppBeltDiag*>(_currentApp)->isScanning();
                 _ctx->ui.beltStatus[0] = static_cast<AppBeltDiag*>(_currentApp)->getBeltStatus(0);
                 _ctx->ui.beltStatus[1] = static_cast<AppBeltDiag*>(_currentApp)->getBeltStatus(1);
+            } else if (_currentMode == MODE_MODBUS_DIAG) {
+                AppModbusDiag* diag = static_cast<AppModbusDiag*>(_currentApp);
+                _ctx->ui.diagSubMode = diag->getSubMode();
+                _ctx->ui.diagTargetNodeId = diag->getTargetId();
             }
         }
 
@@ -208,13 +232,13 @@ const char* AppDispatcher::modeToStr(OperationMode m) {
     switch (m) {
         case MODE_IDLE:            return "IDLE";
         case MODE_PRODUCTION:      return "PRODUCTION";
-        case MODE_DIAG_PULSE:      return "DIAG_PULSE";
         case MODE_DIAG_SCAN:       return "DIAG_SCAN";
         case MODE_DIAG_DETAIL:     return "DIAG_DETAIL";
         case MODE_CONFIGURATION:   return "CONFIGURATION";
         case MODE_SEQUENTIAL_CTRL: return "SEQUENTIAL_CTRL";
         case MODE_SERVO_TEST:      return "SERVO_TEST";
         case MODE_BELT_DIAG:       return "BELT_DIAG";
+        case MODE_MODBUS_DIAG:     return "MODBUS_DIAG";
         case MODE_ABOUT:           return "ABOUT";
         default:                   return "UNKNOWN";
     }

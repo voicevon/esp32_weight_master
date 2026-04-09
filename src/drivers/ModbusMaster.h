@@ -58,6 +58,7 @@ public:
     bool broadcastWrite(uint16_t addr, uint16_t value);
 
     // 原始字节诊断接口
+    void sendRawBuffer(const uint8_t* buf, int len);
     void sendRawByte(uint8_t byte);
     int availableRaw();
     uint8_t readRawByte();

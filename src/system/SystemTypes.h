@@ -10,14 +10,22 @@
 enum OperationMode {
     MODE_IDLE,          // 待载状态 (不轮询)
     MODE_PRODUCTION,    // 生产模式 (全速轮询)
-    MODE_DIAG_PULSE,    // 诊断：1Hz 脉冲测试 (独占总线)
     MODE_DIAG_SCAN,     // 诊断：全量扫描 (独占总线)
     MODE_DIAG_DETAIL,   // 诊断：节点详情查看
     MODE_CONFIGURATION, // 配置模式
     MODE_SEQUENTIAL_CTRL, // 序列化控制模式 (开/关/置零)
     MODE_SERVO_TEST,     // 舵机维护测试模式 (独占总线)
     MODE_BELT_DIAG,      // 皮带诊断跑距测试模式 (独占总线)
+    MODE_MODBUS_DIAG,    // Modbus 诊断器模式 (独占总线)
     MODE_ABOUT           // 关于界面
+};
+
+/**
+ * @brief 诊断子模式 (用于总线助手)
+ */
+enum DiagSubMode {
+    DIAG_SUB_PULSE,    // 原始脉冲模式 (1Hz 递增字节)
+    DIAG_SUB_COMMAND   // 结构化指令模式 (电机控制报文)
 };
 
 /**
@@ -110,6 +118,15 @@ struct UISnapshot {
     bool          beltDiagScanning;   // 是否正在扫描皮带节点
     int8_t        beltStatus[2];      // 0=等待, 1=在线, 2=故障, 3=超时
     bool          beltIsMoving[2];    // 皮带1和皮带2是否正在运行
+
+    // 串口助手/Modbus 诊断同步 (由 AppModbusDiag 填充)
+    DiagSubMode   diagSubMode;        // 当前激活的诊断子模式
+    int           diagTargetNodeId;   // 指令模式的目标节点 ID
+    bool          serialAutoSend;     // 是否自动循环发送 (脉冲模式)
+    char          serialTxHex[64];    // 当前发送的报文 Hex
+    char          serialRxHex[64];    // 最近收到的报文 Hex
+    char          serialLogLine[128]; // 最近生成的一行日志 (用于 Append)
+    uint32_t      serialLogTick;      // 日志更新序列号
 };
 
 #endif

@@ -35,6 +35,12 @@ public:
     void cmdBeltTest(int beltId, int distanceMm) override;
     void cmdTriggerBeltScan() override;
     void cmdUpdateTargets(float dMin, float dMax) override;
+    
+    void cmdSerialSendHex(const char* hexStr) override;
+    void cmdSerialToggleAuto(bool enable) override;
+    void cmdSetDiagSubMode(int mode) override;
+    void cmdSetDiagTarget(int id) override;
+    void cmdDiagAction(int actionId) override;
 
     // 模式控制
     void updateOperationMode(OperationMode newMode) override;

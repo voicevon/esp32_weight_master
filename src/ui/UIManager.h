@@ -71,7 +71,15 @@ private:
     lv_obj_t* whitelist_indicators[21]; // 白名单预览点 (1-20)
     lv_obj_t* diag_tx_label = nullptr;   // 故障诊断：发送计数
     lv_obj_t* diag_rx_label = nullptr;   // 故障诊断：十六进制
+    lv_obj_t* diag_log_view = nullptr;   // [新增] 终端滚动日志视图
     lv_obj_t* diag_switch = nullptr;
+    
+    // [新增] 双模式诊断组件
+    lv_obj_t* diag_mode_btns[3];    // OFF, PULSE, COMMAND
+    lv_obj_t* diag_target_btns[4];  // ID 21, 22, 23, 24
+    lv_obj_t* diag_action_btns[4];  // Stop, IO, Move100, Move500
+    lv_obj_t* diag_pulse_group = nullptr;
+    lv_obj_t* diag_cmd_group = nullptr;
     
     lv_obj_t* belt_diag_switch = nullptr; // 皮带测试模式开关
     lv_obj_t* belt_scan_btn = nullptr;    // 皮带自检按钮

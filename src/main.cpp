@@ -13,9 +13,9 @@
 #include "apps/AppDispatcher.h"
 #include "apps/AppProduction.h"
 #include "apps/AppScan.h"
-#include "apps/AppDiagPulse.h"
 #include "apps/AppSequentialCtrl.h"
 #include "apps/AppBeltDiag.h"
+#include "apps/AppModbusDiag.h"
 
 // --- 全局共享状态 ---
 SystemContext      sysCtx;
@@ -39,9 +39,9 @@ SemaphoreHandle_t  mutexCtx;
 // --- 具体应用实例 ---
 AppProduction      appProduction(&sysCtx, &pollManager, &rs485, &engine, &conveyor, nullptr);
 AppScan            appScan(&sysCtx, &pollManager, &rs485, nullptr);
-AppDiagPulse       appDiagPulse(&sysCtx, &rs485, nullptr);
 AppSequentialCtrl  appSeqCtrl(&sysCtx, &rs485, &pollManager, nullptr);
 AppBeltDiag        appBeltDiag(&sysCtx, &rs485, &conveyor, nullptr);
+AppModbusDiag      appModbusDiag(&sysCtx, &rs485);
 
 void setup() {
     Serial.begin(115200);
@@ -62,16 +62,16 @@ void setup() {
     // 重新注入互斥锁与状态上下文
     appProduction = AppProduction(&sysCtx, &pollManager, &rs485, &engine, &conveyor, mutexCtx);
     appScan       = AppScan(&sysCtx, &pollManager, &rs485, mutexCtx);
-    appDiagPulse  = AppDiagPulse(&sysCtx, &rs485, mutexCtx);
     appSeqCtrl    = AppSequentialCtrl(&sysCtx, &rs485, &pollManager, mutexCtx);
     appBeltDiag   = AppBeltDiag(&sysCtx, &rs485, &conveyor, mutexCtx);
+    appModbusDiag = AppModbusDiag(&sysCtx, &rs485); // 分配给调度器
 
     // 注册应用
     dispatcher.registerApp(&appProduction);
     dispatcher.registerApp(&appScan);
-    dispatcher.registerApp(&appDiagPulse);
     dispatcher.registerApp(&appSeqCtrl);
     dispatcher.registerApp(&appBeltDiag);
+    dispatcher.registerApp(&appModbusDiag);
 
     // 启动调度器 (内部会启动双核任务)
     dispatcher.begin(MODE_PRODUCTION); 

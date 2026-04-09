@@ -21,6 +21,14 @@ public:
     virtual void cmdGlobalServo(bool open) = 0;
     virtual void cmdBeltTest(int beltId, int distanceMm) = 0;
     virtual void cmdTriggerBeltScan() = 0;
+
+    // 串口助手功能
+    virtual void cmdSerialSendHex(const char* hexStr) = 0;
+    virtual void cmdSerialToggleAuto(bool enable) = 0;
+    virtual void cmdSetDiagSubMode(int mode) = 0;
+    virtual void cmdSetDiagTarget(int id) = 0;
+    virtual void cmdDiagAction(int actionId) = 0;
+
     virtual void updateOperationMode(OperationMode mode) = 0;
 };
 
