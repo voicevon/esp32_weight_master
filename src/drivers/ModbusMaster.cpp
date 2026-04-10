@@ -69,9 +69,11 @@ void ModbusMaster::sendPacket(uint8_t* buf, int len) {
     buf[len++] = (crc >> 8) & 0xFF;
     
     // 调试报告：打印原始发送字节
-    Serial.print("[TX RAW >] ");
-    for(int i=0; i<len; i++) Serial.printf("%02X ", buf[i]);
-    Serial.println();
+    if (_logLevel >= LOG_VERBOSE) {
+        Serial.print("[TX RAW >] ");
+        for(int i=0; i<len; i++) Serial.printf("%02X ", buf[i]);
+        Serial.println();
+    }
 
     if (_enPin >= 0) {
         digitalWrite(_enPin, HIGH); 
@@ -107,7 +109,9 @@ bool ModbusMaster::asyncRead(uint8_t id, uint16_t addr, uint16_t count, cbTransa
     while(Serial1.available()) Serial1.read(); // 清空缓冲区
     sendPacket(_txBuf, 6);
     
-    Serial.printf("[ModbusMaster] QUEUE Read ID:%d Addr:0x%04X\n", id, addr);
+    if (_logLevel >= LOG_INFO) {
+        Serial.printf("[ModbusMaster] QUEUE Read ID:%d Addr:0x%04X\n", id, addr);
+    }
     xSemaphoreGive(_mutexBus);
     return true;
 }
@@ -136,7 +140,9 @@ bool ModbusMaster::asyncWrite(uint8_t id, uint16_t addr, uint16_t value, cbTrans
     while(Serial1.available()) Serial1.read();
     sendPacket(_txBuf, 6);
     
-    Serial.printf("[ModbusMaster] QUEUE Write ID:%d Addr:0x%04X Val:%d\n", id, addr, value);
+    if (_logLevel >= LOG_INFO) {
+        Serial.printf("[ModbusMaster] QUEUE Write ID:%d Addr:0x%04X Val:%d\n", id, addr, value);
+    }
     xSemaphoreGive(_mutexBus);
     return true;
 }
@@ -199,7 +205,7 @@ void ModbusMaster::modbusTask(void* param) {
                 }
                 
                 // 增加：打印原始接收字节
-                if (idx > 0) {
+                if (idx > 0 && instance->_logLevel >= LOG_VERBOSE) {
                     Serial.print("[RX RAW <] ");
                     for(int i=0; i<idx; i++) Serial.printf("%02X ", instance->_rxBuf[i]);
                     Serial.println();
@@ -235,8 +241,10 @@ void ModbusMaster::modbusTask(void* param) {
                             }
                         }
                     } else {
-                        Serial.printf("[ModbusMaster] CRC ERROR from ID:%d (Calc:%04X, Rx:%04X)\n", 
-                                      instance->_rxBuf[0], calcCrc, rxCrc);
+                        if (instance->_logLevel >= LOG_ERROR) {
+                            Serial.printf("[ModbusMaster] CRC ERROR from ID:%d (Calc:%04X, Rx:%04X)\n", 
+                                          instance->_rxBuf[0], calcCrc, rxCrc);
+                        }
                         instance->_status = ST_ERROR;
                         if (instance->_pendingCb) {
                             cbTransaction cb = instance->_pendingCb;
@@ -248,7 +256,9 @@ void ModbusMaster::modbusTask(void* param) {
                     // Short frame log removed
                 }
             } else if (millis() - instance->_lastPollTime > 2000) { // 放宽到 2s
-                Serial.printf("[ModbusMaster] TIMEOUT waiting for ID:%d\n", instance->_lastTid);
+                if (instance->_logLevel >= LOG_ERROR) {
+                    Serial.printf("[ModbusMaster] TIMEOUT waiting for ID:%d\n", instance->_lastTid);
+                }
                 instance->_status = ST_TIMEOUT;
                 instance->_packetsDropped++;
                 if (instance->_pendingCb) {

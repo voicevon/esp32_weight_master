@@ -179,16 +179,16 @@ void AppDispatcher::controlLoop() {
             executeModeSwitch();
         }
 
+        // 驱动皮带异步任务队列 (提高到 App 逻辑之上，确保控制指令优先于轮询指令)
+        if (_b1) _b1->update();
+        if (_b2) _b2->update();
+
         if (_currentApp) {
             _currentApp->onLoop();
             if (_currentMode != MODE_PRODUCTION && _currentApp->isFinished()) {
                 updateOperationMode(MODE_PRODUCTION);
             }
         }
-
-        // 驱动皮带异步任务队列
-        if (_b1) _b1->update();
-        if (_b2) _b2->update();
         vTaskDelay(pdMS_TO_TICKS(1));
     }
 }

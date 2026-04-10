@@ -19,6 +19,16 @@ enum OperationMode {
     MODE_MODBUS_DIAG,    // Modbus 诊断器模式 (独占总线)
     MODE_ABOUT           // 关于界面
 };
+ 
+/**
+ * @brief 日志输出级别
+ */
+enum LogLevel {
+    LOG_NONE    = 0,
+    LOG_ERROR   = 1,
+    LOG_INFO    = 2,
+    LOG_VERBOSE = 3
+};
 
 /**
  * @brief 诊断子模式 (用于总线助手)

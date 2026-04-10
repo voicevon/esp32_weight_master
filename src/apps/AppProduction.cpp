@@ -32,8 +32,8 @@ void AppProduction::onLoop() {
     currentStatus = _ctx->prog.sysStatus;
     xSemaphoreGive(_mutex);
 
-    // 1. 动态轮询控制：在就绪及皮带运转期间刷新数据，提高系统吞吐率
-    if (currentStatus == SYS_READY || currentStatus == SYS_BELT_A || currentStatus == SYS_BELT_B) {
+    // 1. 动态轮询控制：仅在就绪状态下轮询。在皮带运转期间停用轮询，确保电机报文优先且避免震动干扰。
+    if (currentStatus == SYS_READY) {
         handlePolling();
     }
 
@@ -142,7 +142,7 @@ void AppProduction::handleCloseState(unsigned long now) {
         });
     } else {
         // 所有舵机关闭完成后，启动皮带运行
-        _b1->moveRelative(30000);
+        _b1->moveDistanceMm(2000);
         _stateStartTime = now;
         updateUIState(SYS_BELT_A);
     }
@@ -150,7 +150,7 @@ void AppProduction::handleCloseState(unsigned long now) {
 
 void AppProduction::handleSettleState(unsigned long now) {
     if (now - _stateStartTime >= DISCHARGE_SETTLE_MS) {
-        _b1->moveRelative(30000);
+        _b1->moveDistanceMm(2000);
         _stateStartTime = now;
         updateUIState(SYS_BELT_A);
     }
@@ -158,7 +158,7 @@ void AppProduction::handleSettleState(unsigned long now) {
 
 void AppProduction::handleBeltAState(unsigned long now) {
     if (now - _stateStartTime >= BELT_COLLECT_PERIOD_MS) {
-        _b2->moveRelative(5000);
+        _b2->moveDistanceMm(500);
         _stateStartTime = now;
         updateUIState(SYS_BELT_B);
     }

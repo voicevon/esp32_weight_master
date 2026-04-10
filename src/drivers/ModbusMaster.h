@@ -56,6 +56,8 @@ public:
      * @brief 广播写入 (ID=0, 无回复)
      */
     bool broadcastWrite(uint16_t addr, uint16_t value);
+    void setLogLevel(LogLevel level) { _logLevel = level; }
+    LogLevel getLogLevel() const { return _logLevel; }
 
     // 原始字节诊断接口
     void sendRawBuffer(const uint8_t* buf, int len);
@@ -87,6 +89,7 @@ private:
     uint32_t _packetsSent = 0;
     uint32_t _packetsDropped = 0;
     uint32_t _charTimeUs = 0; 
+    LogLevel _logLevel = LOG_INFO;
 
     // 私有辅助函数
     uint16_t calculateCRC(uint8_t* buf, int len);

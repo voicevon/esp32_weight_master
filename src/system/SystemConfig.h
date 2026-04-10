@@ -12,8 +12,8 @@
 #define DISCHARGE_PULSE_MS          1000  // 下料斗脉冲开启时间 (1s 自动关闭)
 #define DISCHARGE_SETTLE_MS         1200  // 下料后等待排空并复位的安全余量
 #define DISCHARGE_MIN_DURATION_MS   2000  // 开启到开始关闭之间的最小保持时间 (2s)
-#define BELT_COLLECT_PERIOD_MS      2500  // 收集输送带 (Belt 1)动作时长
-#define BELT_STEP_PERIOD_MS         1200  // 输出输送带 (Belt 2) 步进时长
+#define BELT_COLLECT_PERIOD_MS      8000  // 收集输送带 (Belt 1)动作时长
+#define BELT_STEP_PERIOD_MS         8000  // 输出输送带 (Belt 2) 步进时长
 
 // --- 通讯超时与重试 ---
 #define MODBUS_POLL_TIMEOUT_MS      1000  // 单个节点轮询超时上限 (1s)

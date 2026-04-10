@@ -45,7 +45,7 @@ void Belt::scan(std::function<void(bool)> onComplete) {
         if (onComplete) onComplete(success);
     };
 
-    pushTask(REG_POS1_REV, 0, true, wrapCb);
+    pushTask(REG_POS1_REV, 1, true, wrapCb);
 }
 
 void Belt::update() {
@@ -62,19 +62,24 @@ void Belt::update() {
     auto mbStatus = _rs485->getStatus();
     if (mbStatus == ModbusMaster::ST_WAITING) return;
 
-    // 获取并移除任务 (拷贝副本供闭包使用)
-    BeltTask task = _taskQueue.front();
-    _taskQueue.pop_front();
+    // 获取任务副本（暂不弹出）
+    BeltTask& task = _taskQueue.front();
 
+    bool sent = false;
     if (task.isRead) {
-        _rs485->asyncRead(_id, task.reg, 1, [task](Modbus::ResultCode res, uint16_t tid, void* data) {
+        sent = _rs485->asyncRead(_id, task.reg, task.value, [task](Modbus::ResultCode res, uint16_t tid, void* data) {
             if (task.onDone) task.onDone(res == Modbus::EX_SUCCESS);
             return true;
         }, &_scanBuffer);
     } else {
-        _rs485->asyncWrite(_id, task.reg, task.value, [task](Modbus::ResultCode res, uint16_t tid, void* data) {
+        sent = _rs485->asyncWrite(_id, task.reg, task.value, [task](Modbus::ResultCode res, uint16_t tid, void* data) {
             if (task.onDone) task.onDone(res == Modbus::EX_SUCCESS);
             return true;
         });
+    }
+
+    // 只有在指令成功夺取总线并发出后，才将其从队列中移除
+    if (sent) {
+        _taskQueue.pop_front();
     }
 }
