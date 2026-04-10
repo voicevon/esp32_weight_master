@@ -34,7 +34,7 @@ enum BeltStatus {
  */
 class Belt {
 public:
-    Belt(ModbusMaster* rs485, uint8_t motorId);
+    Belt(ModbusMaster* rs485, uint8_t motorId, uint16_t defaultSpeed = 800);
     
     void begin();
     
@@ -64,6 +64,7 @@ private:
     ModbusMaster* _rs485;
     uint8_t       _id;
     BeltStatus    _status;
+    uint16_t      _speed;
     uint16_t      _scanBuffer;
     
     std::deque<BeltTask> _taskQueue;

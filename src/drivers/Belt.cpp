@@ -1,8 +1,8 @@
 #include "Belt.h"
 #include <Arduino.h>
 
-Belt::Belt(ModbusMaster* rs485, uint8_t motorId)
-    : _rs485(rs485), _id(motorId), _status(BELT_OFFLINE) {
+Belt::Belt(ModbusMaster* rs485, uint8_t motorId, uint16_t defaultSpeed)
+    : _rs485(rs485), _id(motorId), _status(BELT_OFFLINE), _speed(defaultSpeed) {
 }
 
 void Belt::begin() {
@@ -24,7 +24,7 @@ void Belt::moveRelative(int32_t pulses) {
     // 顺序压入 5 个指令任务
     pushTask(REG_POS1_REV, (uint16_t)revs, false);
     pushTask(REG_POS1_PULSE, (uint16_t)pls, false);
-    pushTask(REG_POS1_SPEED, 800, false); // 设定运动速度为 150
+    pushTask(REG_POS1_SPEED, _speed, false); // 使用成员变量中存储的速度
     pushTask(REG_VIRTUAL_IO, 0, false);
     pushTask(REG_VIRTUAL_IO, 1, false);
 }
