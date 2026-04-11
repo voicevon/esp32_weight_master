@@ -19,7 +19,7 @@ void AppProduction::onEnter() {
     _dischargeIndex = 0;
     _selectedIds.clear();
     _stateStartTime = millis();
-    updateUIState(SYS_READY);
+    updateUIState(SYS_READY, 0, 0, true);
     Serial.println("[AppProduction] Production Mode Entered.");
 }
 
@@ -32,8 +32,8 @@ void AppProduction::onLoop() {
     currentStatus = _ctx->prog.sysStatus;
     xSemaphoreGive(_mutex);
 
-    // 1. 动态轮询控制：仅在就绪状态下轮询。在皮带运转期间停用轮询，确保电机报文优先且避免震动干扰。
-    if (currentStatus == SYS_READY) {
+    // 1. 动态轮询控制：就绪或皮带运转期间执行轮询。
+    if (currentStatus == SYS_READY || currentStatus == SYS_BELT_A || currentStatus == SYS_BELT_B) {
         handlePolling();
     }
 
@@ -98,7 +98,11 @@ void AppProduction::handleReadyState(unsigned long now) {
     // 2. 调用算法引擎
     _engine->setTargetRange(currentMin, currentMax);
     CombinationResult res = _engine->findBestCombination(activeWeights);
-    if (!res.success) return;
+    
+    if (!res.success) {
+        updateUIState(SYS_READY, 0, 0, false); // 寻解失败
+        return;
+    }
 
     // 3. 准备下料数据并切入下料状态
     _selectedIds.clear();
@@ -107,6 +111,7 @@ void AppProduction::handleReadyState(unsigned long now) {
         int physId = activeIds[idx];
         _selectedIds.push_back(physId);
         mask |= (1 << (physId - 1));
+        _pollMgr->invalidateNode(physId); // 立即作废数据，防止重复拾取
     }
     
     _dischargeIndex = 0;
@@ -155,12 +160,10 @@ void AppProduction::handleSettleState(unsigned long now) {
         updateUIState(SYS_BELT_A);
     }
 }
-
 void AppProduction::handleBeltAState(unsigned long now) {
     if (now - _stateStartTime >= BELT_COLLECT_PERIOD_MS) {
         _b2->moveDistanceMm(500);
-        _stateStartTime = now;
-        updateUIState(SYS_BELT_B);
+        updateUIState(SYS_READY); // 优化：直接进入就绪，开始下一轮计算，不再独占等待 Belt 2
     }
 }
 
@@ -173,19 +176,24 @@ void AppProduction::handleBeltBState(unsigned long now) {
 /**
  * @brief 界面反馈更新 (UI 与 逻辑解耦的桥梁)
  */
-void AppProduction::updateUIState(SystemStatus status, uint32_t mask, float weight) {
+void AppProduction::updateUIState(SystemStatus status, uint32_t mask, float weight, bool success) {
     xSemaphoreTake(_mutex, portMAX_DELAY);
     _ctx->prog.sysStatus = status;
+    _ctx->prog.lastCalcSuccess = success;
     
     // 逻辑层决定文案，解耦 UI 与内部状态映射
-    switch (status) {
-        case SYS_READY:         strncpy(_ctx->prog.statusText, "就绪", 32); break;
-        case SYS_SEQ_DROP:      strncpy(_ctx->prog.statusText, "逐个下料中", 32); break;
-        case SYS_SEQ_CLOSE:     strncpy(_ctx->prog.statusText, "逐个关闭中", 32); break;
-        case SYS_SETTLE_STABLE: strncpy(_ctx->prog.statusText, "沉降稳定中", 32); break;
-        case SYS_BELT_A:        strncpy(_ctx->prog.statusText, "收集皮带运行", 32); break;
-        case SYS_BELT_B:        strncpy(_ctx->prog.statusText, "步进输出运行", 32); break;
-        default:                strncpy(_ctx->prog.statusText, "初始化", 32); break;
+    if (status == SYS_READY && !success) {
+        strncpy(_ctx->prog.statusText, "寻组合失败 (无解)", 32);
+    } else {
+        switch (status) {
+            case SYS_READY:         strncpy(_ctx->prog.statusText, "就绪", 32); break;
+            case SYS_SEQ_DROP:      strncpy(_ctx->prog.statusText, "逐个下料中", 32); break;
+            case SYS_SEQ_CLOSE:     strncpy(_ctx->prog.statusText, "逐个关闭中", 32); break;
+            case SYS_SETTLE_STABLE: strncpy(_ctx->prog.statusText, "沉降稳定中", 32); break;
+            case SYS_BELT_A:        strncpy(_ctx->prog.statusText, "收集皮带运行", 32); break;
+            case SYS_BELT_B:        strncpy(_ctx->prog.statusText, "步进输出运行", 32); break;
+            default:                strncpy(_ctx->prog.statusText, "初始化", 32); break;
+        }
     }
 
     if (mask != 0 || status == SYS_BELT_A || status == SYS_READY) {

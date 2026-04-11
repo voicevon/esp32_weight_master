@@ -95,6 +95,7 @@ struct WSProductionState {
     char         statusText[32];  // 用于 UI 显示的动态文案
     float        batchWeight;     // 最近成功的组合重量
     uint32_t     idMask;          // 下料掩码
+    bool         lastCalcSuccess; // 上次寻解是否成功
 };
 
 
@@ -137,6 +138,7 @@ struct UISnapshot {
     char          serialRxHex[64];    // 最近收到的报文 Hex
     char          serialLogLine[128]; // 最近生成的一行日志 (用于 Append)
     uint32_t      serialLogTick;      // 日志更新序列号
+    bool          lastCalcSuccess;    // 生产模式：上次寻解是否成功
 };
 
 #endif

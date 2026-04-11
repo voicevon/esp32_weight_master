@@ -341,6 +341,21 @@ void UIManager::buildDashboardView(lv_obj_t* parent) {
     lv_obj_align(label_grand_total, LV_ALIGN_LEFT_MID, 65, 0);
     lv_label_set_text(label_grand_total, "0 g");
 
+    // [新增] 上次成功组合重量显示 (右侧)
+    label_last_batch_prefix = lv_label_create(center_area);
+    lv_obj_set_style_text_font(label_last_batch_prefix, &ui_font_chs_16, 0);
+    lv_obj_set_style_text_color(label_last_batch_prefix, lv_color_hex(0x94A3B8), 0);
+    lv_label_set_text(label_last_batch_prefix, "上轮:");
+    lv_obj_align(label_last_batch_prefix, LV_ALIGN_RIGHT_MID, -120, 0);
+
+    label_last_batch_val = lv_label_create(center_area);
+    lv_obj_set_size(label_last_batch_val, 110, 40);
+    lv_obj_set_style_text_font(label_last_batch_val, &lv_font_montserrat_26, 0);
+    lv_obj_set_style_text_color(label_last_batch_val, lv_color_hex(0x22D3EE), 0); // 预设为青色
+    lv_obj_set_style_text_align(label_last_batch_val, LV_TEXT_ALIGN_LEFT, 0);
+    lv_obj_align(label_last_batch_val, LV_ALIGN_RIGHT_MID, -5, 0);
+    lv_label_set_text(label_last_batch_val, "0 g");
+
     lv_obj_t* graph_container = lv_obj_create(parent);
     lv_obj_set_size(graph_container, 800, 260); // 拉高到 260
     lv_obj_align(graph_container, LV_ALIGN_TOP_MID, 0, 220);
@@ -927,7 +942,10 @@ void UIManager::updateDashboard(const SystemContext* ctx) {
         // 段 1: 已稳重量 (限定 999g 以内)
         snprintf(buf, sizeof(buf), "%d g", (int)fminf(lastStable, 999.0f));
         lv_label_set_text(label_stable_total, buf);
-        lv_obj_set_style_text_color(label_stable_total, lv_color_hex(0x10B981), 0);
+        
+        // 视觉反馈：如果寻解失败显示红色，否则显示翠绿色
+        uint32_t totalColor = ctx->prog.lastCalcSuccess ? 0x10B981 : 0xEF4444;
+        lv_obj_set_style_text_color(label_stable_total, lv_color_hex(totalColor), 0);
         
         // 段 2: 未稳重量 (紧跟 + 符号)
         if (lastUnstable > 0.1f) {
@@ -944,6 +962,16 @@ void UIManager::updateDashboard(const SystemContext* ctx) {
         lv_label_set_text(label_grand_total, buf);
     }
 
+    // [新增] 同步上轮成功组合的重量 (持久显示)
+    static float lastBatchWeight = -1.0f;
+    if (_isFirstUpdate || ctx->prog.batchWeight != lastBatchWeight) {
+        lastBatchWeight = ctx->prog.batchWeight;
+        if (label_last_batch_val) {
+            snprintf(buf, sizeof(buf), "%.1f g", lastBatchWeight);
+            lv_label_set_text(label_last_batch_val, buf);
+        }
+    }
+
     // 3. 核心优化：20 个节点的 Bar Graph (Dirty Check)
     uint32_t selectionMask = ctx->prog.idMask;
     static uint32_t lastMask = 0;
@@ -956,6 +984,7 @@ void UIManager::updateDashboard(const SystemContext* ctx) {
         bool onlineChanged = (_isFirstUpdate || ctx->ui.onlineNodes[i] != _lastSnapshot.onlineNodes[i]);
         bool wlChanged     = (_isFirstUpdate || ctx->ui.whitelistedNodes[i] != _lastSnapshot.whitelistedNodes[i]);
         bool maskChanged   = (_isFirstUpdate || (selectionMask & (1 << (i-1))) != (lastMask & (1 << (i-1))));
+        bool successChanged = (_isFirstUpdate || ctx->prog.lastCalcSuccess != _lastSnapshot.lastCalcSuccess); // 应该包含在 snapshot 或者直接从 prog 读
 
         if (weightChanged) {
             float weight = ctx->ui.currentWeights[i];
@@ -969,13 +998,13 @@ void UIManager::updateDashboard(const SystemContext* ctx) {
             lv_obj_set_style_bg_color(node_bars[i], ctx->ui.whitelistedNodes[i] ? lv_color_hex(0x064E3B) : lv_color_hex(0x334155), LV_PART_MAIN);
         }
 
-        if (stableChanged || maskChanged || onlineChanged || _isFirstUpdate) {
+        if (stableChanged || maskChanged || onlineChanged || successChanged || _isFirstUpdate) {
             uint32_t color = 0x475569; // 默认灰色
             
             if (!ctx->ui.onlineNodes[i]) {
                 color = 0x334155; // 深蓝灰：离线/非工作
             } else if (selectionMask & (1 << (i - 1))) {
-                color = 0x22C55E; // 亮绿色：正在下料
+                color = 0x22D3EE; // 青色 (Cyan 400)：正在下料 (由用户要求替换亮绿)
             } else if (ctx->ui.stableNodes[i]) {
                 color = 0x10B981; // 翠绿色：稳定
             } else {

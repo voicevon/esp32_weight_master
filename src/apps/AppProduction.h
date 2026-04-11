@@ -58,7 +58,7 @@ private:
     void handleBeltAState(unsigned long now);
     void handleBeltBState(unsigned long now);
 
-    void updateUIState(SystemStatus status, uint32_t mask = 0, float weight = 0.0f);
+    void updateUIState(SystemStatus status, uint32_t mask = 0, float weight = 0.0f, bool success = true);
     void loadParams();
     void saveParams();
 };

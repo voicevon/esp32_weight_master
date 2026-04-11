@@ -93,6 +93,13 @@ NodeStatus PollManager::getNodeStatus(int id) const { return (id >= 1 && id <= 2
 void PollManager::setNodeStatus(int id, NodeStatus s) { if (id >= 1 && id <= 20) _nodes[id].status = s; }
 void PollManager::setWhitelisted(int id, bool w) { if (id >= 1 && id <= 20) _nodes[id].whitelisted = w; }
 void PollManager::setServoState(int id, bool open) { if (id >= 1 && id <= 20) _nodes[id].servoOpen = open; }
+void PollManager::invalidateNode(int id) {
+    if (id >= 1 && id <= 20) {
+        _nodes[id].weight = 0.0f;
+        _nodes[id].stable = false;
+        _nodes[id].status = NODE_DIRTY;
+    }
+}
 
 int PollManager::getUnstableCount() const {
     int count = 0;

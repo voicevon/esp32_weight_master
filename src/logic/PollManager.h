@@ -31,6 +31,7 @@ public:
     void setNodeStatus(int id, NodeStatus s);
     void setWhitelisted(int id, bool w);
     void setServoState(int id, bool open);
+    void invalidateNode(int id);
     
     // 聚合统计
     int getUnstableCount() const;

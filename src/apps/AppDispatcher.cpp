@@ -226,6 +226,8 @@ void AppDispatcher::uiLoop() {
                 _ctx->ui.diagTargetNodeId = diag->getTargetId();
             }
         }
+        
+        _ctx->ui.lastCalcSuccess = _ctx->prog.lastCalcSuccess;
 
         _ui->updateDashboard(_ctx);
         

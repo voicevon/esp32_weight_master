@@ -109,7 +109,7 @@ bool ModbusMaster::asyncRead(uint8_t id, uint16_t addr, uint16_t count, cbTransa
     while(Serial1.available()) Serial1.read(); // 清空缓冲区
     sendPacket(_txBuf, 6);
     
-    if (_logLevel >= LOG_INFO) {
+    if (_logLevel >= LOG_VERBOSE) {
         Serial.printf("[ModbusMaster] QUEUE Read ID:%d Addr:0x%04X\n", id, addr);
     }
     xSemaphoreGive(_mutexBus);
@@ -140,7 +140,7 @@ bool ModbusMaster::asyncWrite(uint8_t id, uint16_t addr, uint16_t value, cbTrans
     while(Serial1.available()) Serial1.read();
     sendPacket(_txBuf, 6);
     
-    if (_logLevel >= LOG_INFO) {
+    if (_logLevel >= LOG_VERBOSE) {
         Serial.printf("[ModbusMaster] QUEUE Write ID:%d Addr:0x%04X Val:%d\n", id, addr, value);
     }
     xSemaphoreGive(_mutexBus);
