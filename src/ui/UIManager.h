@@ -66,6 +66,7 @@ private:
     // --- 序列化操作 UI 引用 ---
     lv_obj_t* dashboard_tare_btn = nullptr;
     lv_obj_t* dashboard_tare_lbl = nullptr;
+    lv_obj_t* dashboard_header = nullptr; // 用于回迁 target_label 的容器
 
     // --- Admin / Maintenance Section ---
     void buildAdminView(lv_obj_t* parent);

@@ -23,6 +23,7 @@ UIManager::UIManager() {
 
     dashboard_tare_btn = nullptr;
     dashboard_tare_lbl = nullptr;
+    dashboard_header = nullptr;
 }
 
 static void admin_tab_change_event_cb(lv_event_t * e) {
@@ -281,7 +282,8 @@ void UIManager::init() {
 }
 
 void UIManager::buildDashboardView(lv_obj_t* parent) {
-    lv_obj_t* header = lv_obj_create(parent);
+    dashboard_header = lv_obj_create(parent);
+    lv_obj_t* header = dashboard_header;
     lv_obj_set_size(header, 800, 60);
     lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 0);
     lv_obj_set_style_bg_color(header, lv_color_hex(0x1E293B), 0);
@@ -1282,6 +1284,12 @@ void UIManager::closeTargetBottomSheet() {
     if (target_sheet_bg) {
         lv_obj_del(target_sheet_bg);
         target_sheet_bg = nullptr;
+    }
+
+    // 关键点：将标签回迁至首页 Header 并重新对齐
+    if (target_label && dashboard_header) {
+        lv_obj_set_parent(target_label, dashboard_header);
+        lv_obj_align(target_label, LV_ALIGN_RIGHT_MID, -10, 0);
     }
 }
 // =============================================================================
