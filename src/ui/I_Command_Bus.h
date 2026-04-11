@@ -15,6 +15,8 @@ public:
     // --- 核心业务命令 ---
     virtual void cmdGlobalTare() = 0;
     virtual void cmdStartScan() = 0;
+    virtual void cmdUpdateTargetBase(float delta) = 0;
+    virtual void cmdUpdateTargetOffset(float delta) = 0;
     virtual void cmdUpdateTargets(float dMin, float dMax) = 0;
     virtual void cmdToggleDiagnosis(bool active) = 0;
     virtual void cmdServoTest(int id, bool open) = 0;

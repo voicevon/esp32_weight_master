@@ -134,6 +134,16 @@ void AppDispatcher::cmdDiagAction(int actionId) {
     if (app) ((AppModbusDiag*)app)->triggerAction(actionId);
 }
 
+void AppDispatcher::cmdUpdateTargetBase(float delta) {
+    auto app = findApp(MODE_PRODUCTION);
+    if (app) static_cast<AppProduction*>(app)->updateTargets(delta, 0);
+}
+
+void AppDispatcher::cmdUpdateTargetOffset(float delta) {
+    auto app = findApp(MODE_PRODUCTION);
+    if (app) static_cast<AppProduction*>(app)->updateTargets(0, delta);
+}
+
 void AppDispatcher::cmdUpdateTargets(float dMin, float dMax) {
     auto app = findApp(MODE_PRODUCTION);
     if (app) static_cast<AppProduction*>(app)->updateTargets(dMin, dMax);

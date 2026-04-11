@@ -227,23 +227,29 @@ void AppProduction::onExit() {
     Serial.println("[AppProduction] Production Mode Exited.");
 }
 
-void AppProduction::updateTargets(float dMin, float dMax) {
+void AppProduction::updateTargets(float deltaBase, float deltaOffset) {
     xSemaphoreTake(_mutex, portMAX_DELAY);
-    _ctx->config.targetMin += dMin;
-    _ctx->config.targetMax += dMax;
-    if (_ctx->config.targetMin < 10) _ctx->config.targetMin = 10;
-    if (_ctx->config.targetMax < _ctx->config.targetMin)
-        _ctx->config.targetMax = _ctx->config.targetMin;
+    
+    float currentBase = _ctx->config.targetMin;
+    float currentOffset = _ctx->config.targetMax - _ctx->config.targetMin;
+
+    float newBase = currentBase + deltaBase;
+    float newOffset = currentOffset + deltaOffset;
+
+    if (newBase < 0) newBase = 0;
+    if (newOffset < 0) newOffset = 0;
+
+    _ctx->config.targetMin = newBase;
+    _ctx->config.targetMax = newBase + newOffset;
+
     saveParams();
     xSemaphoreGive(_mutex);
 }
 
-
-
 void AppProduction::loadParams() {
     _nvs.begin("production", true);
-    _ctx->config.targetMin = _nvs.getFloat("tmin", 290.0f);
-    _ctx->config.targetMax = _nvs.getFloat("tmax", 310.0f);
+    _ctx->config.targetMin = _nvs.getFloat("tmin", 170.0f); // 默认基准改为 170
+    _ctx->config.targetMax = _nvs.getFloat("tmax", 180.0f); // 默认最大改为 180 (170+10)
     _ctx->config.accumulatedWeight = _nvs.getFloat("accu", 0.0f);
     _nvs.end();
 }

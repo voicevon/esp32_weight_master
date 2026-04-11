@@ -35,6 +35,8 @@ public:
     void cmdBeltTest(int beltId, int distanceMm) override;
     void cmdBeltRun(int beltId, bool run) override;
     void cmdTriggerBeltScan() override;
+    void cmdUpdateTargetBase(float delta) override;
+    void cmdUpdateTargetOffset(float delta) override;
     void cmdUpdateTargets(float dMin, float dMax) override;
     
     void cmdSerialSendHex(const char* hexStr) override;

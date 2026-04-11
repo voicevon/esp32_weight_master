@@ -88,14 +88,24 @@ static void btn_tare_event_cb(lv_event_t * e) {
     }
 }
 
-static void btn_target_plus_cb(lv_event_t * e) {
+static void btn_target_base_plus_cb(lv_event_t * e) {
     UIManager* ui = (UIManager*)lv_event_get_user_data(e);
-    if (ui && ui->getBus()) ui->getBus()->cmdUpdateTargets(10.0f, 10.0f);
+    if (ui && ui->getBus()) ui->getBus()->cmdUpdateTargetBase(10.0f);
 }
 
-static void btn_target_minus_cb(lv_event_t * e) {
+static void btn_target_base_minus_cb(lv_event_t * e) {
     UIManager* ui = (UIManager*)lv_event_get_user_data(e);
-    if (ui && ui->getBus()) ui->getBus()->cmdUpdateTargets(-10.0f, -10.0f);
+    if (ui && ui->getBus()) ui->getBus()->cmdUpdateTargetBase(-10.0f);
+}
+
+static void btn_target_offset_plus_cb(lv_event_t * e) {
+    UIManager* ui = (UIManager*)lv_event_get_user_data(e);
+    if (ui && ui->getBus()) ui->getBus()->cmdUpdateTargetOffset(1.0f);
+}
+
+static void btn_target_offset_minus_cb(lv_event_t * e) {
+    UIManager* ui = (UIManager*)lv_event_get_user_data(e);
+    if (ui && ui->getBus()) ui->getBus()->cmdUpdateTargetOffset(-1.0f);
 }
 
 static void btn_scan_event_cb(lv_event_t * e) {
@@ -967,7 +977,7 @@ void UIManager::updateDashboard(const SystemContext* ctx) {
     static float lastMin = -1.0f, lastMax = -1.0f;
     if (_isFirstUpdate || ctx->config.targetMin != lastMin || ctx->config.targetMax != lastMax) {
         lastMin = ctx->config.targetMin; lastMax = ctx->config.targetMax;
-        snprintf(buf, sizeof(buf), "目标: %.0f-%.0fg", lastMin, lastMax);
+        snprintf(buf, sizeof(buf), "目标: %.0f + %.0fg", lastMin, lastMax - lastMin);
         lv_label_set_text(target_label, buf);
     }
 
@@ -1210,10 +1220,10 @@ void UIManager::showTargetBottomSheet() {
         lv_obj_move_foreground(target_label);
     }
 
-    // 3. 创建侧边调整面板 (1/5 宽度)
+    // 3. 创建侧边调整面板 (1/5 宽度，增加高度以容纳 4 个按钮)
     target_sheet = lv_obj_create(lv_scr_act());
-    lv_obj_set_size(target_sheet, 160, 180);
-    lv_obj_align(target_sheet, LV_ALIGN_TOP_RIGHT, 0, 65); // 位于 Header 下方
+    lv_obj_set_size(target_sheet, 160, 320); // 从 180 增加到 320
+    lv_obj_align(target_sheet, LV_ALIGN_TOP_RIGHT, 0, 65);
     lv_obj_set_style_bg_color(target_sheet, lv_color_hex(0x1E293B), 0);
     lv_obj_set_style_border_width(target_sheet, 1, 0);
     lv_obj_set_style_border_color(target_sheet, lv_color_hex(0x38BDF8), 0);
@@ -1222,29 +1232,46 @@ void UIManager::showTargetBottomSheet() {
     lv_obj_set_scrollbar_mode(target_sheet, LV_SCROLLBAR_MODE_OFF);
     lv_obj_set_flex_flow(target_sheet, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(target_sheet, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_gap(target_sheet, 15, 0);
+    lv_obj_set_style_pad_gap(target_sheet, 12, 0);
     lv_obj_set_style_pad_all(target_sheet, 10, 0);
 
-    // 4. 按钮：加十在上，减十在下
-    lv_obj_t* btn_plus = lv_btn_create(target_sheet);
-    lv_obj_set_size(btn_plus, 140, 70);
-    lv_obj_set_style_bg_color(btn_plus, lv_color_hex(0x22C55E), 0);
-    lv_obj_add_event_cb(btn_plus, btn_target_plus_cb, LV_EVENT_CLICKED, this);
-    lv_obj_t* lbl_plus = lv_label_create(btn_plus);
-    lv_obj_set_style_text_font(lbl_plus, &lv_font_montserrat_26, 0);
-    lv_label_set_text(lbl_plus, "+ 10g");
-    lv_obj_center(lbl_plus);
+    // 4.1 基准调节按钮
+    lv_obj_t* btn_base_p = lv_btn_create(target_sheet);
+    lv_obj_set_size(btn_base_p, 140, 60);
+    lv_obj_set_style_bg_color(btn_base_p, lv_color_hex(0x22C55E), 0);
+    lv_obj_add_event_cb(btn_base_p, btn_target_base_plus_cb, LV_EVENT_CLICKED, this);
+    lv_obj_t* lbl_base_p = lv_label_create(btn_base_p);
+    lv_obj_set_style_text_font(lbl_base_p, &ui_font_chs_16, 0);
+    lv_label_set_text(lbl_base_p, "基准 +10g");
+    lv_obj_center(lbl_base_p);
 
-    // Minus Button (-10g)
-    lv_obj_t* btn_minus = lv_btn_create(target_sheet);
-    lv_obj_set_size(btn_minus, 140, 70);
-    lv_obj_set_style_bg_color(btn_minus, lv_color_hex(0xEF4444), 0);
-    lv_obj_set_style_radius(btn_minus, 8, 0);
-    lv_obj_add_event_cb(btn_minus, btn_target_minus_cb, LV_EVENT_CLICKED, this);
-    lv_obj_t* lbl_minus = lv_label_create(btn_minus);
-    lv_obj_set_style_text_font(lbl_minus, &lv_font_montserrat_26, 0);
-    lv_label_set_text(lbl_minus, "- 10g");
-    lv_obj_center(lbl_minus);
+    lv_obj_t* btn_base_m = lv_btn_create(target_sheet);
+    lv_obj_set_size(btn_base_m, 140, 60);
+    lv_obj_set_style_bg_color(btn_base_m, lv_color_hex(0x6366F1), 0); // 使用靛蓝色区分
+    lv_obj_add_event_cb(btn_base_m, btn_target_base_minus_cb, LV_EVENT_CLICKED, this);
+    lv_obj_t* lbl_base_m = lv_label_create(btn_base_m);
+    lv_obj_set_style_text_font(lbl_base_m, &ui_font_chs_16, 0);
+    lv_label_set_text(lbl_base_m, "基准 -10g");
+    lv_obj_center(lbl_base_m);
+
+    // 4.2 误差调节按钮
+    lv_obj_t* btn_off_p = lv_btn_create(target_sheet);
+    lv_obj_set_size(btn_off_p, 140, 60);
+    lv_obj_set_style_bg_color(btn_off_p, lv_color_hex(0x10B981), 0);
+    lv_obj_add_event_cb(btn_off_p, btn_target_offset_plus_cb, LV_EVENT_CLICKED, this);
+    lv_obj_t* lbl_off_p = lv_label_create(btn_off_p);
+    lv_obj_set_style_text_font(lbl_off_p, &ui_font_chs_16, 0);
+    lv_label_set_text(lbl_off_p, "误差 +1g");
+    lv_obj_center(lbl_off_p);
+
+    lv_obj_t* btn_off_m = lv_btn_create(target_sheet);
+    lv_obj_set_size(btn_off_m, 140, 60);
+    lv_obj_set_style_bg_color(btn_off_m, lv_color_hex(0xEF4444), 0);
+    lv_obj_add_event_cb(btn_off_m, btn_target_offset_minus_cb, LV_EVENT_CLICKED, this);
+    lv_obj_t* lbl_off_m = lv_label_create(btn_off_m);
+    lv_obj_set_style_text_font(lbl_off_m, &ui_font_chs_16, 0);
+    lv_label_set_text(lbl_off_m, "误差 -1g");
+    lv_obj_center(lbl_off_m);
 }
 
 void UIManager::closeTargetBottomSheet() {
