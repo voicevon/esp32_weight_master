@@ -16,7 +16,19 @@ enum BeltStatus {
     BELT_FAULT   = 3  // 电机报错/超时
 };
 
+/**
+ * @enum BeltMode
+ * @brief 皮带电机的工作模式
+ */
+enum BeltMode {
+    MODE_UNKNOWN  = 0,
+    MODE_POSITION = 1, // 位置模式 (P2P)
+    MODE_SPEED    = 2, // 速度模式
+    MODE_TORQUE   = 3  // 扭矩模式
+};
+
 // 伺服电机寄存器宏定义 (十六进制地址)
+#define REG_SPEED_SET    0x0015  // 速度设置寄存器 (仅速度模式)
 #define REG_POS1_REV     0x0202  // 内部位置指令 1 的位置圈数
 #define REG_POS1_PULSE   0x0203  // 内部位置指令 1 的位置圈内脉冲数
 #define REG_POS1_SPEED   0x0204  // 内部位置指令控制 1 的移动速度
@@ -34,16 +46,30 @@ enum BeltStatus {
  */
 class Belt {
 public:
-    Belt(ModbusMaster* rs485, uint8_t motorId, uint16_t defaultSpeed = 800);
+    Belt(ModbusMaster* rs485, uint8_t motorId, BeltMode mode = MODE_UNKNOWN, uint16_t defaultSpeed = 800);
     
     void begin();
     
     // 核心更新接口：需在主循环中高频调用
     void update();
 
-    // 基础指令 (推入队列)
+    // 基础设置
+    void setSpeed(uint16_t speed);
+    void setMode(BeltMode mode) { _mode = mode; }
+    BeltMode getMode() const { return _mode; }
+
+    // --- 位置模式专有接口 ---
     void moveRelative(int32_t pulses);
     void moveDistanceMm(int32_t mm);
+    void positionPause();
+    void positionResume();
+
+    // --- 速度模式专有接口 ---
+    void speedRun(bool forward = true);
+    void speedStop();
+
+    // 通用停止接口 (兼顾模式)
+    void stop();
 
     // 在线探测 (推入队列)
     void scan(std::function<void(bool)> onComplete = nullptr);
@@ -64,6 +90,7 @@ private:
     ModbusMaster* _rs485;
     uint8_t       _id;
     BeltStatus    _status;
+    BeltMode      _mode;
     uint16_t      _speed;
     uint16_t      _scanBuffer;
     

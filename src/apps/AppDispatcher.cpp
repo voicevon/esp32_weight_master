@@ -87,6 +87,21 @@ void AppDispatcher::cmdBeltTest(int beltIndex, int distanceMm) {
     }
 }
 
+void AppDispatcher::cmdBeltRun(int beltIndex, bool run) {
+    if (beltIndex != 0 && beltIndex != 1) return;
+
+    auto app = findApp(MODE_BELT_DIAG);
+    if (app && _currentMode == MODE_BELT_DIAG) {
+        static_cast<AppBeltDiag*>(app)->triggerRunToggle(beltIndex, run);
+    } else {
+        Belt* target = (beltIndex == 0) ? _b1 : _b2;
+        if (target) {
+            if (run) target->speedRun();
+            else target->speedStop();
+        }
+    }
+}
+
 void AppDispatcher::cmdTriggerBeltScan() {
     auto app = findApp(MODE_BELT_DIAG);
     if (app && _currentMode == MODE_BELT_DIAG) {

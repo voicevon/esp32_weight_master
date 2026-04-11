@@ -96,3 +96,27 @@ void AppBeltDiag::triggerRun(int beltIndex, int distanceMm) {
     if (beltIndex == 0) _b1->moveDistanceMm(distanceMm);
     else if (beltIndex == 1) _b2->moveDistanceMm(distanceMm);
 }
+
+void AppBeltDiag::triggerRunToggle(int beltIndex, bool run) {
+    if (beltIndex != 0 && beltIndex != 1) return;
+
+    if (_mutexCtx) xSemaphoreTake(_mutexCtx, portMAX_DELAY);
+    _ctx->ui.beltIsMoving[beltIndex] = run;
+    if (_mutexCtx) xSemaphoreGive(_mutexCtx);
+
+    if (beltIndex == 0) {
+        if (run) _b1->moveRelative(PULSES_PER_REV * 10); // 位置模式下 run 默认为转 10 圈
+        else _b1->positionPause();
+    } else {
+        if (run) _b2->speedRun();
+        else _b2->speedStop();
+    }
+    
+    // 如果是启动，更新状态和计时器（防止 UI 立即切回 IDLE）
+    if (run) {
+        _state = DIAG_RUNNING;
+        _stateTimer = millis();
+    } else {
+        _state = DIAG_IDLE;
+    }
+}

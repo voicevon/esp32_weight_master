@@ -33,6 +33,7 @@ public:
     void cmdServoTest(int id, bool open) override;
     void cmdGlobalServo(bool open) override;
     void cmdBeltTest(int beltId, int distanceMm) override;
+    void cmdBeltRun(int beltId, bool run) override;
     void cmdTriggerBeltScan() override;
     void cmdUpdateTargets(float dMin, float dMax) override;
     

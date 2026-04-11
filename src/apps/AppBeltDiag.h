@@ -30,6 +30,7 @@ public:
 
     void triggerScan();
     void triggerRun(int beltIndex, int distanceMm);
+    void triggerRunToggle(int beltIndex, bool run);
 
 private:
     SystemContext* _ctx;

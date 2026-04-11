@@ -28,8 +28,8 @@ ModbusMaster       rs485(PIN_RS485_RX, PIN_RS485_TX, PIN_RS485_TX_EN, RS485_BAUD
 // --- 业务层 ---
 PollManager        pollManager(&rs485);
 CombinationEngine  engine(290.0f, 310.0f);
-Belt               beltPrimary(&rs485, MOTOR_ID_BELT1, 800);
-Belt               beltSecondary(&rs485, MOTOR_ID_BELT2, 200);
+Belt               beltPrimary(&rs485, MOTOR_ID_BELT1, MODE_POSITION, 800);
+Belt               beltSecondary(&rs485, MOTOR_ID_BELT2, MODE_SPEED, 200);
 
 // --- 核心调度器 ---
 AppDispatcher      dispatcher(&sysCtx, &rs485, &pollManager, &ui, &beltPrimary, &beltSecondary);

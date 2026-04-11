@@ -147,6 +147,7 @@ void AppProduction::handleCloseState(unsigned long now) {
         });
     } else {
         // 所有舵机关闭完成后，启动皮带运行
+        _b2->stop(); // 关键：高优先级互锁，确保输出带立即停止，为收集带让路
         _b1->moveDistanceMm(2000);
         _stateStartTime = now;
         updateUIState(SYS_BELT_A);
@@ -155,6 +156,7 @@ void AppProduction::handleCloseState(unsigned long now) {
 
 void AppProduction::handleSettleState(unsigned long now) {
     if (now - _stateStartTime >= DISCHARGE_SETTLE_MS) {
+        _b2->stop(); // 关键：高优先级互锁
         _b1->moveDistanceMm(2000);
         _stateStartTime = now;
         updateUIState(SYS_BELT_A);

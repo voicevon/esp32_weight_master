@@ -1,8 +1,8 @@
 #include "Belt.h"
 #include <Arduino.h>
 
-Belt::Belt(ModbusMaster* rs485, uint8_t motorId, uint16_t defaultSpeed)
-    : _rs485(rs485), _id(motorId), _status(BELT_OFFLINE), _speed(defaultSpeed) {
+Belt::Belt(ModbusMaster* rs485, uint8_t motorId, BeltMode mode, uint16_t defaultSpeed)
+    : _rs485(rs485), _id(motorId), _status(BELT_OFFLINE), _mode(mode), _speed(defaultSpeed) {
 }
 
 void Belt::begin() {
@@ -12,6 +12,13 @@ void Belt::begin() {
 
 void Belt::pushTask(uint16_t reg, uint16_t val, bool isRead, std::function<void(bool)> onDone) {
     _taskQueue.push_back({reg, val, isRead, onDone});
+}
+
+void Belt::setSpeed(uint16_t speed) {
+    _speed = speed;
+    if (_mode == MODE_SPEED) {
+        pushTask(REG_SPEED_SET, speed, false);
+    }
 }
 
 void Belt::moveRelative(int32_t pulses) {
@@ -32,6 +39,40 @@ void Belt::moveRelative(int32_t pulses) {
 void Belt::moveDistanceMm(int32_t mm) {
     int32_t pulses = mm * PULSES_PER_MM;
     moveRelative(pulses);
+}
+
+void Belt::positionPause() {
+    if (_mode != MODE_POSITION) return;
+    pushTask(REG_VIRTUAL_IO, 0, false);
+    _status = BELT_READY;
+}
+
+void Belt::positionResume() {
+    if (_mode != MODE_POSITION) return;
+    pushTask(REG_VIRTUAL_IO, 1, false);
+    _status = BELT_MOVING;
+}
+
+void Belt::speedRun(bool forward) {
+    if (_mode != MODE_SPEED) return;
+    _status = BELT_MOVING;
+    pushTask(REG_VIRTUAL_IO, forward ? 1 : 2, false);
+}
+
+void Belt::speedStop() {
+    if (_mode != MODE_SPEED) return;
+    pushTask(REG_VIRTUAL_IO, 0, false);
+    _status = BELT_READY;
+}
+
+void Belt::stop() {
+    _taskQueue.clear();
+    
+    if (_mode == MODE_SPEED) {
+        speedStop();
+    } else {
+        positionPause();
+    }
 }
 
 void Belt::scan(std::function<void(bool)> onComplete) {

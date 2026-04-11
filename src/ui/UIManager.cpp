@@ -208,6 +208,20 @@ static void btn_belt2_test_cb(lv_event_t * e) {
     }
 }
 
+static void btn_belt2_start_cb(lv_event_t * e) {
+    UIManager* ui = (UIManager*)lv_event_get_user_data(e);
+    if (ui && ui->getBus()) {
+        ui->getBus()->cmdBeltRun(1, true);
+    }
+}
+
+static void btn_belt2_stop_cb(lv_event_t * e) {
+    UIManager* ui = (UIManager*)lv_event_get_user_data(e);
+    if (ui && ui->getBus()) {
+        ui->getBus()->cmdBeltRun(1, false);
+    }
+}
+
 static void scan_confirm_btn_cb(lv_event_t * e) {
     UIManager * ui = (UIManager*)lv_event_get_user_data(e);
     if(ui) ui->deleteScanModal();
@@ -692,17 +706,41 @@ void UIManager::buildAdminView(lv_obj_t* parent) {
         lv_label_set_text(*indicators[i], "等待扫描");
         lv_obj_align(*indicators[i], LV_ALIGN_TOP_LEFT, 260, y - 4);
 
-        const char* dists[] = {"100mm", "200mm", "500mm", "1000mm"};
-        for (int j = 0; j < 4; j++) {
-            lv_obj_t* btn = lv_btn_create(belt_cont);
-            lv_obj_set_size(btn, 170, 70);
-            lv_obj_align(btn, LV_ALIGN_TOP_LEFT, 10 + j * 185, y + 40);
-            lv_obj_set_style_bg_color(btn, lv_color_hex(colors[i]), 0);
-            lv_obj_add_event_cb(btn, callbacks[i], LV_EVENT_CLICKED, this);
-            lv_obj_t* lb = lv_label_create(btn);
-            lv_obj_set_style_text_font(lb, &lv_font_montserrat_26, 0);
-            lv_label_set_text(lb, dists[j]);
-            lv_obj_center(lb);
+        if (i == 0) {
+            // 一级带：保持定距测试按钮 (100-1000mm)
+            const char* dists[] = {"100mm", "200mm", "500mm", "1000mm"};
+            for (int j = 0; j < 4; j++) {
+                lv_obj_t* btn = lv_btn_create(belt_cont);
+                lv_obj_set_size(btn, 170, 70);
+                lv_obj_align(btn, LV_ALIGN_TOP_LEFT, 10 + j * 185, y + 40);
+                lv_obj_set_style_bg_color(btn, lv_color_hex(colors[i]), 0);
+                lv_obj_add_event_cb(btn, callbacks[i], LV_EVENT_CLICKED, this);
+                lv_obj_t* lb = lv_label_create(btn);
+                lv_obj_set_style_text_font(lb, &lv_font_montserrat_26, 0);
+                lv_label_set_text(lb, dists[j]);
+                lv_obj_center(lb);
+            }
+        } else {
+            // 二级带 (速度模式)：改为“启动”与“停止”两个大按钮
+            lv_obj_t* btn_start = lv_btn_create(belt_cont);
+            lv_obj_set_size(btn_start, 350, 70);
+            lv_obj_align(btn_start, LV_ALIGN_TOP_LEFT, 10, y + 40);
+            lv_obj_set_style_bg_color(btn_start, lv_color_hex(0x10B981), 0); // 绿色
+            lv_obj_add_event_cb(btn_start, btn_belt2_start_cb, LV_EVENT_CLICKED, this);
+            lv_obj_t* lbl_start = lv_label_create(btn_start);
+            lv_obj_set_style_text_font(lbl_start, &ui_font_chs_16, 0);
+            lv_label_set_text(lbl_start, "启动 (持续运行)");
+            lv_obj_center(lbl_start);
+
+            lv_obj_t* btn_stop = lv_btn_create(belt_cont);
+            lv_obj_set_size(btn_stop, 350, 70);
+            lv_obj_align(btn_stop, LV_ALIGN_TOP_LEFT, 380, y + 40);
+            lv_obj_set_style_bg_color(btn_stop, lv_color_hex(0xEF4444), 0); // 红色
+            lv_obj_add_event_cb(btn_stop, btn_belt2_stop_cb, LV_EVENT_CLICKED, this);
+            lv_obj_t* lbl_stop = lv_label_create(btn_stop);
+            lv_obj_set_style_text_font(lbl_stop, &ui_font_chs_16, 0);
+            lv_label_set_text(lbl_stop, "停止");
+            lv_obj_center(lbl_stop);
         }
     }
 }
