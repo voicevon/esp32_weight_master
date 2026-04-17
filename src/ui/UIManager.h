@@ -77,12 +77,8 @@ private:
     lv_obj_t* diag_log_view = nullptr;   // [新增] 终端滚动日志视图
     lv_obj_t* diag_switch = nullptr;
     
-    // [新增] 双模式诊断组件
-    lv_obj_t* diag_mode_btns[3];    // OFF, PULSE, COMMAND
-    lv_obj_t* diag_target_btns[4];  // ID 21, 22, 23, 24
-    lv_obj_t* diag_action_btns[4];  // Stop, IO, Move100, Move500
+    // [精简型] Modbus 诊断组件
     lv_obj_t* diag_pulse_group = nullptr;
-    lv_obj_t* diag_cmd_group = nullptr;
     
     lv_obj_t* belt_diag_switch = nullptr; // 皮带测试模式开关
     lv_obj_t* belt_scan_btn = nullptr;    // 皮带自检按钮

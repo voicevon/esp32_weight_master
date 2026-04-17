@@ -7,6 +7,8 @@
 #include "logic/CombinationEngine.h"
 #include "drivers/Belt.h"
 
+#define BELT2_AUTO_STOP_MS            5000  // 二级带自主停机超时 (5秒)
+
 AppProduction::AppProduction(SystemContext* ctx, PollManager* pollMgr, ModbusMaster* rs485,
                              CombinationEngine* engine, Belt* b1, Belt* b2,
                              SemaphoreHandle_t mutex)
@@ -19,6 +21,8 @@ void AppProduction::onEnter() {
     _dischargeIndex = 0;
     _selectedIds.clear();
     _stateStartTime = millis();
+    _belt2StartTime = 0;
+    _belt2Running = false;
     updateUIState(SYS_READY, 0, 0, true);
     Serial.println("[AppProduction] Production Mode Entered.");
 }
@@ -66,6 +70,13 @@ void AppProduction::onLoop() {
         default:
             updateUIState(SYS_READY); // 异常状态恢复
             break;
+    }
+
+    // 3. 皮带 2 自主停机监测 (Watchdog)
+    if (_belt2Running && (now - _belt2StartTime >= BELT2_AUTO_STOP_MS)) {
+        _b2->speedStop();
+        _belt2Running = false;
+        Serial.println("[AppProduction] Belt2 Autonomous Stop (Timeout).");
     }
 }
 
@@ -147,7 +158,9 @@ void AppProduction::handleCloseState(unsigned long now) {
         });
     } else {
         // 所有舵机关闭完成后，启动皮带运行
-        _b2->stop(); // 关键：高优先级互锁，确保输出带立即停止，为收集带让路
+        _b2->stop(); // 重要：高优先级物理互锁，确保输出带停止，为收集带让路
+        _belt2Running = false;
+
         _b1->moveDistanceMm(2000);
         _stateStartTime = now;
         updateUIState(SYS_BELT_A);
@@ -156,7 +169,9 @@ void AppProduction::handleCloseState(unsigned long now) {
 
 void AppProduction::handleSettleState(unsigned long now) {
     if (now - _stateStartTime >= DISCHARGE_SETTLE_MS) {
-        _b2->stop(); // 关键：高优先级互锁
+        _b2->stop(); // 重要：高优先级物理互锁
+        _belt2Running = false;
+
         _b1->moveDistanceMm(2000);
         _stateStartTime = now;
         updateUIState(SYS_BELT_A);
@@ -164,8 +179,13 @@ void AppProduction::handleSettleState(unsigned long now) {
 }
 void AppProduction::handleBeltAState(unsigned long now) {
     if (now - _stateStartTime >= BELT_COLLECT_PERIOD_MS) {
-        _b2->moveDistanceMm(500);
-        updateUIState(SYS_READY); // 优化：直接进入就绪，开始下一轮计算，不再独占等待 Belt 2
+        // 模式切换：由点动改为持续运行 (Speed Mode)
+        _b2->speedRun(true); 
+        _belt2StartTime = now;
+        _belt2Running = true;
+        
+        updateUIState(SYS_READY); // 直接进入就绪，开始下一轮计算
+        Serial.println("[AppProduction] Belt2 Started (Continuous Mode).");
     }
 }
 

@@ -14,10 +14,11 @@ UIManager::UIManager() {
         node_weight_labels[i] = nullptr;
     }
     scan_confirm_btn = nullptr;
-    for(int r=0; r<5; r++) {
-        for(int c=0; c<21; c++) scan_blocks[r][c] = nullptr;
-    }
+    diag_tx_label = nullptr;
+    diag_rx_label = nullptr;
+    diag_log_view = nullptr;
     diag_switch = nullptr;
+    diag_pulse_group = nullptr;
     for(int i=0; i<21; i++) servo_btns[i] = nullptr;
     _bus = nullptr;
 
@@ -150,26 +151,6 @@ static void serial_auto_switch_cb(lv_event_t * e) {
     if (ui && ui->getBus()) ui->getBus()->cmdSerialToggleAuto(active);
 }
 
-static void diag_mode_switch_cb(lv_event_t * e) {
-    UIManager* ui = (UIManager*)lv_event_get_user_data(e);
-    lv_obj_t* btn = lv_event_get_target(e);
-    int mode = (int)lv_obj_get_user_data(btn);
-    if (ui && ui->getBus()) ui->getBus()->cmdSetDiagSubMode(mode);
-}
-
-static void diag_target_select_cb(lv_event_t * e) {
-    UIManager* ui = (UIManager*)lv_event_get_user_data(e);
-    lv_obj_t* btn = lv_event_get_target(e);
-    int id = (int)lv_obj_get_user_data(btn);
-    if (ui && ui->getBus()) ui->getBus()->cmdSetDiagTarget(id);
-}
-
-static void diag_action_trigger_cb(lv_event_t * e) {
-    UIManager* ui = (UIManager*)lv_event_get_user_data(e);
-    lv_obj_t* btn = lv_event_get_target(e);
-    int action = (int)lv_obj_get_user_data(btn);
-    if (ui && ui->getBus()) ui->getBus()->cmdDiagAction(action);
-}
 
 static void servo_test_event_cb(lv_event_t * e) {
     UIManager* ui = (UIManager*)lv_event_get_user_data(e);
@@ -440,10 +421,10 @@ void UIManager::buildAdminView(lv_obj_t* parent) {
     lv_obj_t* t_scan = lv_tabview_add_tab(admin_tv, "节点");
     lv_obj_t* t_servo = lv_tabview_add_tab(admin_tv, "舵机");
     lv_obj_t* t_belt = lv_tabview_add_tab(admin_tv, "皮带");
-    lv_obj_t* t_monitor = lv_tabview_add_tab(admin_tv, "总线");
+    lv_obj_t* t_modbus = lv_tabview_add_tab(admin_tv, "总线");
 
     // 统一设置各 Tab 样式
-    lv_obj_t* sub_tabs[] = {t_scan, t_servo, t_belt, t_monitor};
+    lv_obj_t* sub_tabs[] = {t_scan, t_servo, t_belt, t_modbus};
     for(auto t : sub_tabs) {
         lv_obj_set_style_pad_all(t, 15, 0);
         lv_obj_set_scrollbar_mode(t, LV_SCROLLBAR_MODE_OFF); 
@@ -488,128 +469,34 @@ void UIManager::buildAdminView(lv_obj_t* parent) {
         lv_obj_center(lbl);
     }
 
-    // --- Tab 2: 串口诊断助手 (极简 Flex 布局重构) ---
-    lv_obj_clean(t_monitor); // [关键修复] 清理旧层，防止叠加
-    
-    lv_obj_t* monitor_cont = lv_obj_create(t_monitor);
+    // --- Tab 2: Modbus 诊断 (精简版) ---
+    lv_obj_t* monitor_cont = lv_obj_create(t_modbus);
     lv_obj_set_size(monitor_cont, LV_PCT(100), LV_PCT(100));
     lv_obj_set_style_bg_opa(monitor_cont, 0, 0);
     lv_obj_set_style_border_width(monitor_cont, 0, 0);
-    lv_obj_set_style_pad_all(monitor_cont, 2, 0);
+    lv_obj_set_flex_flow(monitor_cont, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(monitor_cont, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_all(monitor_cont, 10, 0);
+    lv_obj_set_style_pad_gap(monitor_cont, 15, 0);
 
-    // 1. 顶部模式切换 (2 模式)
-    lv_obj_t* mode_area = lv_obj_create(monitor_cont);
-    lv_obj_set_size(mode_area, 750, 48);
-    lv_obj_align(mode_area, LV_ALIGN_TOP_MID, 0, 0);
-    lv_obj_set_style_bg_color(mode_area, lv_color_hex(0x1E293B), 0);
-    lv_obj_set_style_border_width(mode_area, 0, 0);
-    lv_obj_set_style_radius(mode_area, 8, 0);
-    lv_obj_set_flex_flow(mode_area, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(mode_area, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_gap(mode_area, 80, 0);
-
-    const char* m_names[] = {"脉冲测试模式", "指令调试模式"};
-    for(int i=0; i<2; i++) {
-        diag_mode_btns[i] = lv_btn_create(mode_area);
-        lv_obj_set_size(diag_mode_btns[i], 240, 36);
-        lv_obj_set_user_data(diag_mode_btns[i], (void*)i);
-        lv_obj_add_flag(diag_mode_btns[i], LV_OBJ_FLAG_CHECKABLE);
-        lv_obj_add_event_cb(diag_mode_btns[i], diag_mode_switch_cb, LV_EVENT_CLICKED, this);
-        lv_obj_set_style_bg_color(diag_mode_btns[i], lv_color_hex(0x334155), 0);
-        lv_obj_set_style_bg_color(diag_mode_btns[i], lv_color_hex(0x2563EB), LV_STATE_CHECKED);
-        lv_obj_t* l = lv_label_create(diag_mode_btns[i]);
-        lv_obj_set_style_text_font(l, &ui_font_chs_16, 0);
-        lv_label_set_text(l, m_names[i]);
-        lv_obj_center(l);
-    }
-
-    // 2. 中间功能区 (Flex 行容器)
-    lv_obj_t* func_area = lv_obj_create(monitor_cont);
-    lv_obj_set_size(func_area, 750, 110);
-    lv_obj_align(func_area, LV_ALIGN_TOP_MID, 0, 52);
-    lv_obj_set_style_bg_opa(func_area, 0, 0);
-    lv_obj_set_style_border_width(func_area, 0, 0);
-    lv_obj_set_flex_flow(func_area, LV_FLEX_FLOW_ROW);
-    lv_obj_set_style_pad_all(func_area, 0, 0);
-    lv_obj_set_style_pad_gap(func_area, 10, 0);
-
-    // 左侧脉冲区
-    diag_pulse_group = lv_obj_create(func_area);
-    lv_obj_set_size(diag_pulse_group, 230, 110);
+    // 1. 自动脉冲控制区 (贯通显示)
+    diag_pulse_group = lv_obj_create(monitor_cont);
+    lv_obj_set_size(diag_pulse_group, 750, 60);
     lv_obj_set_style_bg_color(diag_pulse_group, lv_color_hex(0x0F172A), 0);
     lv_obj_set_style_border_color(diag_pulse_group, lv_color_hex(0x334155), 0);
     lv_obj_set_style_radius(diag_pulse_group, 10, 0);
 
     lv_obj_t* lp = lv_label_create(diag_pulse_group);
     lv_obj_set_style_text_font(lp, &ui_font_chs_16, 0);
-    lv_obj_set_style_text_color(lp, lv_color_hex(0xE2E8F0), 0); // [修复] 增加亮度
-    lv_label_set_text(lp, "自动脉冲:");
-    lv_obj_align(lp, LV_ALIGN_CENTER, -40, 0);
+    lv_obj_set_style_text_color(lp, lv_color_hex(0xE2E8F0), 0);
+    lv_label_set_text(lp, "自动脉冲测试 (检测总线全报文):");
+    lv_obj_align(lp, LV_ALIGN_LEFT_MID, 20, 0);
 
     diag_switch = lv_switch_create(diag_pulse_group);
-    lv_obj_set_size(diag_switch, 60, 30);
-    lv_obj_align(diag_switch, LV_ALIGN_CENTER, 40, 0);
+    lv_obj_set_size(diag_switch, 70, 35);
+    lv_obj_align(diag_switch, LV_ALIGN_RIGHT_MID, -20, 0);
     lv_obj_add_event_cb(diag_switch, serial_auto_switch_cb, LV_EVENT_VALUE_CHANGED, this);
 
-    // 右侧指令区 (关键点：改用 Flex Column 防止垂直重叠)
-    diag_cmd_group = lv_obj_create(func_area);
-    lv_obj_set_size(diag_cmd_group, 510, 110);
-    lv_obj_set_flex_flow(diag_cmd_group, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(diag_cmd_group, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_bg_color(diag_cmd_group, lv_color_hex(0x0F172A), 0);
-    lv_obj_set_style_border_color(diag_cmd_group, lv_color_hex(0x334155), 0);
-    lv_obj_set_style_radius(diag_cmd_group, 10, 0);
-    lv_obj_set_style_pad_all(diag_cmd_group, 5, 0);
-    lv_obj_set_style_pad_gap(diag_cmd_group, 8, 0);
-
-    // 第一行：ID 选择
-    lv_obj_t* id_row = lv_obj_create(diag_cmd_group);
-    lv_obj_set_size(id_row, 490, 42);
-    lv_obj_set_style_bg_opa(id_row, 0, 0);
-    lv_obj_set_style_border_width(id_row, 0, 0);
-    lv_obj_set_flex_flow(id_row, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(id_row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_all(id_row, 0, 0);
-    lv_obj_set_style_pad_gap(id_row, 10, 0);
-
-    lv_obj_t* t_lbl = lv_label_create(id_row);
-    lv_obj_set_style_text_font(t_lbl, &ui_font_chs_16, 0);
-    lv_obj_set_style_text_color(t_lbl, lv_color_hex(0xE2E8F0), 0); // [修复] 增加亮度
-    lv_label_set_text(t_lbl, "目标ID:");
-
-    for(int i=0; i<4; i++) {
-        diag_target_btns[i] = lv_btn_create(id_row);
-        lv_obj_set_size(diag_target_btns[i], 58, 32);
-        lv_obj_set_user_data(diag_target_btns[i], (void*)(21+i));
-        lv_obj_add_flag(diag_target_btns[i], LV_OBJ_FLAG_CHECKABLE);
-        lv_obj_add_event_cb(diag_target_btns[i], diag_target_select_cb, LV_EVENT_CLICKED, this);
-        lv_obj_t* tl = lv_label_create(diag_target_btns[i]);
-        lv_label_set_text_fmt(tl, "%d", 21+i);
-        lv_obj_center(tl);
-    }
-
-    // 第二行：动作按钮
-    lv_obj_t* act_matrix = lv_obj_create(diag_cmd_group);
-    lv_obj_set_size(act_matrix, 490, 45);
-    lv_obj_set_style_bg_opa(act_matrix, 0, 0);
-    lv_obj_set_style_border_width(act_matrix, 0, 0);
-    lv_obj_set_flex_flow(act_matrix, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(act_matrix, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_all(act_matrix, 0, 0);
-    lv_obj_set_style_pad_gap(act_matrix, 12, 0);
-
-    const char* actions[] = {"停止", "运行", "跑100", "跑500"};
-    for(int i=0; i<4; i++) {
-        diag_action_btns[i] = lv_btn_create(act_matrix);
-        lv_obj_set_size(diag_action_btns[i], 105, 38);
-        lv_obj_set_user_data(diag_action_btns[i], (void*)i);
-        lv_obj_add_event_cb(diag_action_btns[i], diag_action_trigger_cb, LV_EVENT_CLICKED, this);
-        lv_obj_set_style_bg_color(diag_action_btns[i], lv_color_hex(i==0 ? 0xEF4444 : 0x0369A1), 0);
-        lv_obj_t* al = lv_label_create(diag_action_btns[i]);
-        lv_obj_set_style_text_font(al, &ui_font_chs_16, 0);
-        lv_label_set_text(al, actions[i]);
-        lv_obj_center(al);
-    }
 
     // 3. 报文终端 (彩色日志容器)
     diag_log_view = lv_obj_create(monitor_cont);
@@ -1127,29 +1014,9 @@ void UIManager::updateDashboard(const SystemContext* ctx) {
                 lv_label_set_text(belt2_status_indicator, st2);
             }
         } else if (ctx->ui.curMode == MODE_MODBUS_DIAG) {
-            // 7. Modbus 诊断器状态同步
-            DiagSubMode subMode = ctx->ui.diagSubMode;
-            int targetId = ctx->ui.diagTargetNodeId;
-
-            // 7.1 模式按钮同步 (Checked 状态)
-            for(int i=0; i<2; i++) {
-                if (diag_mode_btns[i]) {
-                    if (subMode == (DiagSubMode)i) lv_obj_add_state(diag_mode_btns[i], LV_STATE_CHECKED);
-                    else lv_obj_clear_state(diag_mode_btns[i], LV_STATE_CHECKED);
-                }
-            }
-
-            // 7.2 互锁逻辑：根据模式禁用/启用对应区域
-            if (diag_pulse_group) {
-                if (subMode == DIAG_SUB_PULSE) lv_obj_clear_state(diag_pulse_group, LV_STATE_DISABLED);
-                else lv_obj_add_state(diag_pulse_group, LV_STATE_DISABLED);
-            }
-            if (diag_cmd_group) {
-                if (subMode == DIAG_SUB_COMMAND) lv_obj_clear_state(diag_cmd_group, LV_STATE_DISABLED);
-                else lv_obj_add_state(diag_cmd_group, LV_STATE_DISABLED);
-            }
-
-            // 7.3 脉冲开关同步
+            // 7. Modbus 诊断器状态同步 (精简版)
+            
+            // 7.1 脉冲开关同步
             if (diag_switch) {
                 bool isAuto = ctx->ui.serialAutoSend;
                 if (isAuto != lv_obj_has_state(diag_switch, LV_STATE_CHECKED)) {
@@ -1157,26 +1024,18 @@ void UIManager::updateDashboard(const SystemContext* ctx) {
                     else lv_obj_clear_state(diag_switch, LV_STATE_CHECKED);
                 }
             }
-
-            // 7.4 目标 ID 按钮同步
-            for(int i=0; i<4; i++) {
-                if (diag_target_btns[i]) {
-                    if (targetId == (21+i)) lv_obj_add_state(diag_target_btns[i], LV_STATE_CHECKED);
-                    else lv_obj_clear_state(diag_target_btns[i], LV_STATE_CHECKED);
-                }
-            }
             
-            // 7.5 日志滚动刷新 (彩色 Flex 标签逻辑)
+            // 7.2 日志滚动刷新
             static uint32_t lastLogTick = 0;
             if (ctx->ui.serialLogTick != lastLogTick) {
                 lastLogTick = ctx->ui.serialLogTick;
                 if (diag_log_view && ctx->ui.serialLogLine[0]) {
                     const char* line = ctx->ui.serialLogLine;
-                    uint32_t color = 0xFFFFFF; // 默认白色 (SYS/CMD)
+                    uint32_t color = 0xFFFFFF; // 默认白色
                     
-                    if (strstr(line, "[TX >]"))      color = 0xFDE047; // 黄色 (发送)
-                    else if (strstr(line, "[RX <]")) color = 0x22C55E; // 绿色 (接收)
-                    else if (strstr(line, "[ERR]") || strstr(line, "[WAR]")) color = 0xEF4444; // 红色 (错误)
+                    if (strstr(line, "[TX >]"))      color = 0xFDE047; // 黄色
+                    else if (strstr(line, "[RX <]")) color = 0x22C55E; // 绿色
+                    else if (strstr(line, "[ERR]") || strstr(line, "[WAR]")) color = 0xEF4444; // 红色
 
                     lv_obj_t* log_item = lv_label_create(diag_log_view);
                     lv_obj_set_width(log_item, LV_PCT(100));

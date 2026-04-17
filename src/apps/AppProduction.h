@@ -49,6 +49,8 @@ private:
     std::vector<int>    _selectedIds;
     int                 _dischargeIndex = 0;
     float               _lastCombinedWeight = 0;
+    unsigned long       _belt2StartTime = 0;
+    bool                _belt2Running = false;
 
     void handlePolling();
     void handleReadyState(unsigned long now);

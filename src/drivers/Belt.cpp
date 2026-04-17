@@ -56,6 +56,7 @@ void Belt::positionResume() {
 void Belt::speedRun(bool forward) {
     if (_mode != MODE_SPEED) return;
     _status = BELT_MOVING;
+    pushTask(0x0015, _speed, false);
     pushTask(REG_VIRTUAL_IO, forward ? 1 : 2, false);
 }
 
