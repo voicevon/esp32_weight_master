@@ -985,7 +985,8 @@ void UIManager::updateDashboard(const SystemContext* ctx) {
                     // 批量模式中，非当前节点但非白名单的逻辑已在上方拦截
                 }
                 
-                lv_obj_set_style_bg_color(servo_btns[i], lv_color_hex(color), 0);
+                lv_obj_set_style_bg_color(servo_btns[i], lv_color_hex(color), LV_PART_MAIN | LV_STATE_DEFAULT);
+                lv_obj_set_style_bg_color(servo_btns[i], lv_color_hex(color), LV_PART_MAIN | LV_STATE_CHECKED);
             }
         }
     }

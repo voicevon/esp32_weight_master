@@ -43,7 +43,7 @@ bool WeightNode::asyncOpenServo() {
     if (!_mb || _isAsyncActive) return false;
 
     _isAsyncActive = true;
-    return _mb->asyncWrite(_id, REG_CMD_CONTROL, CMD_SERVO_OPEN, [this](Modbus::ResultCode event, uint16_t tid, void* data) {
+    bool success = _mb->asyncWrite(_id, REG_CMD_CONTROL, CMD_SERVO_OPEN, [this](Modbus::ResultCode event, uint16_t tid, void* data) {
         this->_isAsyncActive = false;
         if (event == Modbus::EX_SUCCESS) {
             this->_servoOpen = true;
@@ -54,13 +54,15 @@ bool WeightNode::asyncOpenServo() {
         }
         return true;
     });
+    if (!success) _isAsyncActive = false;
+    return success;
 }
 
 bool WeightNode::asyncCloseServo() {
     if (!_mb || _isAsyncActive) return false;
 
     _isAsyncActive = true;
-    return _mb->asyncWrite(_id, REG_CMD_CONTROL, CMD_SERVO_CLOSE, [this](Modbus::ResultCode event, uint16_t tid, void* data) {
+    bool success = _mb->asyncWrite(_id, REG_CMD_CONTROL, CMD_SERVO_CLOSE, [this](Modbus::ResultCode event, uint16_t tid, void* data) {
         this->_isAsyncActive = false;
         if (event == Modbus::EX_SUCCESS) {
             this->_servoOpen = false;
@@ -70,16 +72,20 @@ bool WeightNode::asyncCloseServo() {
         }
         return true;
     });
+    if (!success) _isAsyncActive = false;
+    return success;
 }
 
 bool WeightNode::asyncTare() {
     if (!_mb || _isAsyncActive) return false;
 
     _isAsyncActive = true;
-    return _mb->asyncWrite(_id, REG_CMD_CONTROL, CMD_TARE, [this](Modbus::ResultCode event, uint16_t tid, void* data) {
+    bool success = _mb->asyncWrite(_id, REG_CMD_CONTROL, CMD_TARE, [this](Modbus::ResultCode event, uint16_t tid, void* data) {
         this->_isAsyncActive = false;
         return true;
     });
+    if (!success) _isAsyncActive = false;
+    return success;
 }
 
 void WeightNode::invalidate() {

@@ -77,10 +77,12 @@ void NodeManager::fillUISnapshot(UISnapshot& snapshot) const {
         snapshot.onlineNodes[i]      = _nodes[i].isOnline();
         snapshot.whitelistedNodes[i] = _nodes[i].isWhitelisted();
         
-        if (!_nodes[i].isOnline()) {
-            snapshot.servoRealStates[i] = -1; 
-        } else {
-            snapshot.servoRealStates[i] = _nodes[i].isServoOpen() ? 1 : 0;
+        if (snapshot.curMode != 5) { // MODE_SERVO_TEST = 5
+            if (!_nodes[i].isOnline()) {
+                snapshot.servoRealStates[i] = -1; 
+            } else {
+                snapshot.servoRealStates[i] = _nodes[i].isServoOpen() ? 1 : 0;
+            }
         }
 
         if (_nodes[i].isOnline() && _nodes[i].isWhitelisted()) {

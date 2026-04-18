@@ -76,8 +76,11 @@ void SystemKernel::cmdToggleDiagnosis(bool active) {
 }
 
 void SystemKernel::cmdServoTest(int id, bool open) {
-    _rs485->syncWrite(id, REG_CMD_CONTROL, open ? CMD_SERVO_OPEN : CMD_SERVO_CLOSE);
+    bool success = _rs485->syncWrite(id, REG_CMD_CONTROL, open ? CMD_SERVO_OPEN : CMD_SERVO_CLOSE);
     _nodeMgr->setServoState(id, open);
+    // 单点动作：更新本地的UI记录并触发颜色刷新
+    _ctx->ui.servoRealStates[id] = success ? (open ? 1 : 0) : -1;
+    _ctx->prog.dirtyFlags |= DF_NODE_DATA;
 }
 
 void SystemKernel::cmdBeltTest(int beltIndex, int distanceMm) {

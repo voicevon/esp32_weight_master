@@ -240,6 +240,27 @@ void ModbusMaster::modbusTask(void* param) {
                                 cb(Modbus::EX_SUCCESS, instance->_lastTid, nullptr);
                             }
                             instance->_status = ST_SUCCESS;
+                        } else if ((fn & 0x80) != 0) { // 异常回复码 (如 0x83, 0x86)
+                            if (instance->_logLevel >= LOG_ERROR) {
+                                Serial.printf("[ModbusMaster] EXCEPTION from ID:%d FN:0x%02X Code:0x%02X\n", instance->_rxBuf[0], fn, instance->_rxBuf[2]);
+                            }
+                            instance->_status = ST_ERROR;
+                            if (instance->_pendingCb) {
+                                cbTransaction cb = instance->_pendingCb;
+                                instance->_pendingCb = nullptr;
+                                cb(Modbus::EX_ERROR, instance->_lastTid, nullptr);
+                            }
+                        } else {
+                            // 收到未被支持的功能码回复
+                            if (instance->_logLevel >= LOG_ERROR) {
+                                Serial.printf("[ModbusMaster] UNHANDLED FN:0x%02X from ID:%d\n", fn, instance->_rxBuf[0]);
+                            }
+                            instance->_status = ST_ERROR;
+                            if (instance->_pendingCb) {
+                                cbTransaction cb = instance->_pendingCb;
+                                instance->_pendingCb = nullptr;
+                                cb(Modbus::EX_ERROR, instance->_lastTid, nullptr);
+                            }
                         }
                     } else {
                         if (instance->_logLevel >= LOG_ERROR) {
