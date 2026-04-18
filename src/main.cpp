@@ -7,6 +7,7 @@
 #include "drivers/TouchScreen.h"
 #include "drivers/PinDefinition.h"
 #include "logic/CombinationEngine.h"
+#include "logic/NodeManager.h"
 #include "drivers/Belt.h"
 
 // Apps
@@ -26,21 +27,21 @@ UIManager          ui;
 ModbusMaster       rs485(PIN_RS485_RX, PIN_RS485_TX, PIN_RS485_TX_EN, RS485_BAUD);
 
 // --- 业务层 ---
-PollManager        pollManager(&rs485);
+NodeManager        nodeManager(&rs485);
 CombinationEngine  engine(290.0f, 310.0f);
 Belt               beltPrimary(&rs485, MOTOR_ID_BELT1, MODE_POSITION, 800);
 Belt               beltSecondary(&rs485, MOTOR_ID_BELT2, MODE_SPEED, 400);
 
 // --- 核心调度器 ---
-AppDispatcher      dispatcher(&sysCtx, &rs485, &pollManager, &ui, &beltPrimary, &beltSecondary);
+AppDispatcher      dispatcher(&sysCtx, &rs485, &nodeManager, &ui, &beltPrimary, &beltSecondary);
 
 // --- 互斥锁 (共享状态同步) ---
 SemaphoreHandle_t  mutexCtx;
 
 // --- 具体应用实例 ---
-AppProduction      appProduction(&sysCtx, &pollManager, &rs485, &engine, &beltPrimary, &beltSecondary, nullptr);
-AppScan            appScan(&sysCtx, &pollManager, &rs485, nullptr);
-AppSequentialCtrl  appSeqCtrl(&sysCtx, &rs485, &pollManager, nullptr);
+AppProduction      appProduction(&sysCtx, &nodeManager, &rs485, &engine, &beltPrimary, &beltSecondary, nullptr);
+AppScan            appScan(&sysCtx, &nodeManager, &rs485, nullptr);
+AppSequentialCtrl  appSeqCtrl(&sysCtx, &rs485, &nodeManager, nullptr);
 AppBeltDiag        appBeltDiag(&sysCtx, &rs485, &beltPrimary, &beltSecondary, nullptr);
 AppModbusDiag      appModbusDiag(&sysCtx, &rs485);
 
@@ -61,9 +62,9 @@ void setup() {
     }
 
     // 重新注入互斥锁与状态上下文
-    appProduction = AppProduction(&sysCtx, &pollManager, &rs485, &engine, &beltPrimary, &beltSecondary, mutexCtx);
-    appScan       = AppScan(&sysCtx, &pollManager, &rs485, mutexCtx);
-    appSeqCtrl    = AppSequentialCtrl(&sysCtx, &rs485, &pollManager, mutexCtx);
+    appProduction = AppProduction(&sysCtx, &nodeManager, &rs485, &engine, &beltPrimary, &beltSecondary, mutexCtx);
+    appScan       = AppScan(&sysCtx, &nodeManager, &rs485, mutexCtx);
+    appSeqCtrl    = AppSequentialCtrl(&sysCtx, &rs485, &nodeManager, mutexCtx);
     appBeltDiag   = AppBeltDiag(&sysCtx, &rs485, &beltPrimary, &beltSecondary, mutexCtx);
     appModbusDiag = AppModbusDiag(&sysCtx, &rs485); // 分配给调度器
 

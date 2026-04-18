@@ -1,5 +1,5 @@
 #include "apps/AppSequentialCtrl.h"
-#include "logic/PollManager.h"
+#include "logic/NodeManager.h"
 #include "system/SystemConfig.h"
 #include <Arduino.h>
 

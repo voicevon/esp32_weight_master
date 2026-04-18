@@ -3,18 +3,19 @@
 
 #include "apps/IApp.h"
 #include "system/SystemContext.h"
-#include "logic/PollManager.h"
+#include "logic/NodeManager.h"
+#include "drivers/ModbusMaster.h"
 #include <Arduino.h>
 
 /**
  * @class AppScan
  * @brief 节点扫描应用。
  * 负责在诊断模式下遍历所有节点并更新白名单。
- * 业务逻辑已完全从 PollManager 迁移至此。
+ * 业务逻辑已完全从 NodeManager 迁移至此。
  */
 class AppScan : public IApp {
 public:
-    AppScan(SystemContext* ctx, PollManager* pollMgr, ModbusMaster* rs485, SemaphoreHandle_t mutex)
+    AppScan(SystemContext* ctx, NodeManager* pollMgr, ModbusMaster* rs485, SemaphoreHandle_t mutex)
         : _ctx(ctx), _pollMgr(pollMgr), _rs485(rs485), _mutex(mutex) {}
 
     void onEnter() override;
@@ -36,7 +37,7 @@ public:
 
 private:
     SystemContext*    _ctx;
-    PollManager*      _pollMgr;
+    NodeManager*      _pollMgr;
     ModbusMaster*     _rs485;
     SemaphoreHandle_t _mutex;
 

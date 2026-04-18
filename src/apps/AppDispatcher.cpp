@@ -2,7 +2,7 @@
 #include <lvgl.h>
 #include "system/SystemContext.h"
 #include "drivers/ModbusMaster.h"
-#include "logic/PollManager.h"
+#include "logic/NodeManager.h"
 #include "drivers/Belt.h"
 #include "apps/AppProduction.h"
 #include "apps/AppScan.h"
@@ -11,7 +11,7 @@
 #include "apps/AppModbusDiag.h"
 #include "apps/AppSequentialCtrl.h"
 
-AppDispatcher::AppDispatcher(SystemContext* ctx, ModbusMaster* rs485, PollManager* pollMgr, UIManager* ui, Belt* b1, Belt* b2)
+AppDispatcher::AppDispatcher(SystemContext* ctx, ModbusMaster* rs485, NodeManager* pollMgr, UIManager* ui, Belt* b1, Belt* b2)
     : _ctx(ctx), _rs485(rs485), _pollMgr(pollMgr), _ui(ui), _b1(b1), _b2(b2) {
     _mutexCtx = xSemaphoreCreateMutex();
 }

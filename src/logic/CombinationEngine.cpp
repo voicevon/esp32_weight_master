@@ -1,93 +1,88 @@
 #include "CombinationEngine.h"
+#include "logic/WeightNode.h"
 #include <algorithm>
 #include <Arduino.h>
 
-struct NodeRef {
+struct InternalNode {
     float weight;
-    int index; // Original index in the input vector (0-indexed)
+    WeightNode* node;
 };
 
 CombinationEngine::CombinationEngine(float minWeight, float maxWeight)
     : _minWeight(minWeight), _maxWeight(maxWeight) {}
 
-CombinationResult CombinationEngine::findBestCombination(const std::vector<float>& weights) {
+CombinationResult CombinationEngine::findBestCombination(const std::vector<WeightNode*>& nodes_in) {
     CombinationResult result = {false, 0.0f, {}};
-    int n = weights.size();
+    int n = nodes_in.size();
     if (n == 0) return result;
 
-    // 1. 结构化并降序排序 (优先处理大物料)
-    std::vector<NodeRef> nodes;
-    nodes.reserve(n);
-    for (int i = 0; i < n; i++) {
-        if (weights[i] > 0) {
-            nodes.push_back({weights[i], i});
+    // 1. 结构化并降序排序
+    std::vector<InternalNode> internal_nodes;
+    internal_nodes.reserve(n);
+    for (auto* node : nodes_in) {
+        float w = node->getWeight();
+        if (w > 0) {
+            internal_nodes.push_back({w, node});
         }
     }
     
-    if (nodes.empty()) return result;
+    if (internal_nodes.empty()) return result;
 
-    std::sort(nodes.begin(), nodes.end(), [](const NodeRef& a, const NodeRef& b) {
+    std::sort(internal_nodes.begin(), internal_nodes.end(), [](const InternalNode& a, const InternalNode& b) {
         return a.weight > b.weight;
     });
 
-    // 2. 贪婪初选：从重到轻累加，直到达到下限
-    std::vector<int> selections; // 存储在 nodes 中的索引
+    // 2. 贪婪初选
+    std::vector<int> selections; // indices into internal_nodes
     float currentSum = 0;
     
-    for (int i = 0; i < (int)nodes.size(); i++) {
-        currentSum += nodes[i].weight;
+    for (int i = 0; i < (int)internal_nodes.size(); i++) {
+        currentSum += internal_nodes[i].weight;
         selections.push_back(i);
         if (currentSum >= _minWeight) break;
     }
 
-    // 3. 初选校验：如果初选就超上限，说明无法通过大斗组合直接满足
+    // 3. 初选校验
     if (currentSum < _minWeight || currentSum > _maxWeight) {
-        // 尝试从头开始找一个单斗满足的 (兜底)
-        for(int i = 0; i < (int)nodes.size(); i++) {
-            if (nodes[i].weight >= _minWeight && nodes[i].weight <= _maxWeight) {
+        for(int i = 0; i < (int)internal_nodes.size(); i++) {
+            if (internal_nodes[i].weight >= _minWeight && internal_nodes[i].weight <= _maxWeight) {
                 result.success = true;
-                result.totalWeight = nodes[i].weight;
-                result.selectedIndices = {nodes[i].index};
+                result.totalWeight = internal_nodes[i].weight;
+                result.selectedNodes = {internal_nodes[i].node};
                 return result;
             }
         }
         return result; 
     }
 
-    // 4. 置换优化：尝试用剩余的“较小”斗替换掉已选中的“最小”斗，看能否更逼近下限
+    // 4. 置换优化
     bool optimized = true;
     while (optimized) {
         optimized = false;
-        
-        // 找到当前选中组合中权重最小的那个
         int smallest_in_sel_idx = -1;
         float min_weight_in = 1e9;
         int list_pos_in_selections = -1;
 
         for (int i = 0; i < (int)selections.size(); i++) {
             int node_idx = selections[i];
-            if (nodes[node_idx].weight < min_weight_in) {
-                min_weight_in = nodes[node_idx].weight;
+            if (internal_nodes[node_idx].weight < min_weight_in) {
+                min_weight_in = internal_nodes[node_idx].weight;
                 smallest_in_sel_idx = node_idx;
                 list_pos_in_selections = i;
             }
         }
 
-        // 在未选中的斗中寻找一个替代者
-        for (int i = 0; i < (int)nodes.size(); i++) {
-            // 检查是否已选中
+        for (int i = 0; i < (int)internal_nodes.size(); i++) {
             bool already_selected = false;
             for (int s : selections) if (s == i) { already_selected = true; break; }
             if (already_selected) continue;
 
-            float newWeight = currentSum - min_weight_in + nodes[i].weight;
-            
-            // 如果新重量仍在范围内，且比当前重量更接近下限，则替换
+            float newWeight = currentSum - min_weight_in + internal_nodes[i].weight;
             if (newWeight >= _minWeight && newWeight < currentSum) {
                 currentSum = newWeight;
                 selections[list_pos_in_selections] = i;
                 optimized = true;
-                break; // 继续下一轮全局置换
+                break;
             }
         }
     }
@@ -96,7 +91,7 @@ CombinationResult CombinationEngine::findBestCombination(const std::vector<float
     result.success = true;
     result.totalWeight = currentSum;
     for (int node_idx : selections) {
-        result.selectedIndices.push_back(nodes[node_idx].index);
+        result.selectedNodes.push_back(internal_nodes[node_idx].node);
     }
 
     return result;

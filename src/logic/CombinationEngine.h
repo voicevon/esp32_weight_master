@@ -3,10 +3,12 @@
 
 #include <vector>
 
+class WeightNode;
+
 struct CombinationResult {
     bool success;
     float totalWeight;
-    std::vector<int> selectedIndices; // 0-based index into the input weights vector
+    std::vector<WeightNode*> selectedNodes; 
 };
 
 class CombinationEngine {
@@ -19,7 +21,7 @@ public:
     void setTargetRange(float min, float max) { _minWeight = min; _maxWeight = max; }
 
     // 在提供的重量中寻找最佳组合
-    CombinationResult findBestCombination(const std::vector<float>& weights);
+    CombinationResult findBestCombination(const std::vector<WeightNode*>& nodes);
 
 private:
     float _minWeight;

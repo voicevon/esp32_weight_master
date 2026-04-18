@@ -6,7 +6,7 @@
 #include <Arduino.h>
 #include "drivers/ModbusMaster.h"
 
-class PollManager;
+class NodeManager;
 
 /**
  * @class AppSequentialCtrl
@@ -15,7 +15,7 @@ class PollManager;
  */
 class AppSequentialCtrl : public IApp {
 public:
-    AppSequentialCtrl(SystemContext* ctx, ModbusMaster* rs485, PollManager* pollMgr, SemaphoreHandle_t mutex)
+    AppSequentialCtrl(SystemContext* ctx, ModbusMaster* rs485, NodeManager* pollMgr, SemaphoreHandle_t mutex)
         : _ctx(ctx), _rs485(rs485), _pollMgr(pollMgr), _mutex(mutex) {}
 
     void onEnter() override;
@@ -43,7 +43,7 @@ private:
     
     SystemContext*    _ctx;
     ModbusMaster*     _rs485;
-    PollManager*      _pollMgr;
+    NodeManager*      _pollMgr;
     SemaphoreHandle_t _mutex;
 
     Action             _pendingAction = ACT_NONE;

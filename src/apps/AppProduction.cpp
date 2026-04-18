@@ -2,14 +2,15 @@
 #include <Arduino.h>
 #include "system/SystemConfig.h"
 #include "system/SystemContext.h"
-#include "logic/PollManager.h"
+#include "logic/NodeManager.h"
+#include "logic/WeightNode.h"
 #include "drivers/ModbusMaster.h"
 #include "logic/CombinationEngine.h"
 #include "drivers/Belt.h"
 
 #define BELT2_AUTO_STOP_MS            5000  // 二级带自主停机超时 (5秒)
 
-AppProduction::AppProduction(SystemContext* ctx, PollManager* pollMgr, ModbusMaster* rs485,
+AppProduction::AppProduction(SystemContext* ctx, NodeManager* pollMgr, ModbusMaster* rs485,
                              CombinationEngine* engine, Belt* b1, Belt* b2,
                              SemaphoreHandle_t mutex)
     : _ctx(ctx), _pollMgr(pollMgr), _rs485(rs485), _engine(engine), _b1(b1), _b2(b2), _mutex(mutex)
@@ -19,7 +20,7 @@ AppProduction::AppProduction(SystemContext* ctx, PollManager* pollMgr, ModbusMas
 void AppProduction::onEnter() {
     loadParams();
     _dischargeIndex = 0;
-    _selectedIds.clear();
+    _selectedNodes.clear();
     _stateStartTime = millis();
     _belt2StartTime = 0;
     _belt2Running = false;
@@ -92,15 +93,14 @@ void AppProduction::handleReadyState(unsigned long now) {
 
     // 1. 预检查：仅在稳定总重可能达标时才启动昂贵的引擎计算 (优化项)
     float stableSum = 0;
-    std::vector<float> activeWeights;
-    std::vector<int>   activeIds;
+    std::vector<WeightNode*> activeNodes;
 
     for (int id = 1; id <= 20; id++) {
-        if (_pollMgr->isOnline(id) && _pollMgr->isStable(id) && _pollMgr->isWhitelisted(id)) {
-            float w = _pollMgr->getWeight(id);
+        WeightNode* node = _pollMgr->getNode(id);
+        if (node && node->isOnline() && node->isStable() && node->isWhitelisted()) {
+            float w = node->getWeight();
             stableSum += w;
-            activeWeights.push_back(w);
-            activeIds.push_back(id);
+            activeNodes.push_back(node);
         }
     }
 
@@ -108,7 +108,7 @@ void AppProduction::handleReadyState(unsigned long now) {
 
     // 2. 调用算法引擎
     _engine->setTargetRange(currentMin, currentMax);
-    CombinationResult res = _engine->findBestCombination(activeWeights);
+    CombinationResult res = _engine->findBestCombination(activeNodes);
     
     if (!res.success) {
         updateUIState(SYS_READY, 0, 0, false); // 寻解失败
@@ -116,49 +116,65 @@ void AppProduction::handleReadyState(unsigned long now) {
     }
 
     // 3. 准备下料数据并切入下料状态
-    _selectedIds.clear();
+    _selectedNodes = res.selectedNodes;
     uint32_t mask = 0;
-    for (int idx : res.selectedIndices) {
-        int physId = activeIds[idx];
-        _selectedIds.push_back(physId);
-        mask |= (1 << (physId - 1));
-        _pollMgr->invalidateNode(physId); // 立即作废数据，防止重复拾取
+    for (auto* node : _selectedNodes) {
+        mask |= (1 << (node->getId() - 1));
+        node->invalidate(); // 立即作废数据，防止重复拾取
     }
     
     _dischargeIndex = 0;
     _lastCombinedWeight = res.totalWeight;
-    _stateStartTime = now; // 记录序列开启的起始时刻 (重要)
+    _stateStartTime = now;
     updateUIState(SYS_SEQ_DROP, mask, res.totalWeight);
     Serial.printf("[AppProduction] Combined: %.1f g, Mask: 0x%08X\n", res.totalWeight, mask);
 }
 
 void AppProduction::handleDropState(unsigned long now) {
-    // 异步逐个分发下料指令 (开启舵机)
-    if (_dischargeIndex < (int)_selectedIds.size()) {
-        int nodeId = _selectedIds[_dischargeIndex];
-        bool sent = _rs485->asyncWrite(nodeId, REG_CMD_CONTROL, CMD_SERVO_OPEN, [this](Modbus::ResultCode res, uint16_t tid, void* data) {
-            this->_dischargeIndex++;
-            return true;
-        });
+    if (_dischargeIndex < (int)_selectedNodes.size()) {
+        WeightNode* node = _selectedNodes[_dischargeIndex];
+        
+        // 如果已经开启，则看下一个
+        if (node->isServoOpen()) {
+            _dischargeIndex++;
+            return;
+        }
+
+        // 尝试开启
+        if (node->asyncOpenServo()) {
+            Serial.printf("[AppProduction] Sending OPEN to Node %d...\n", node->getId());
+        }
+        
+        // 挂起状态检查：如果重试多次仍失败，通知用户并跳过（或根据需要处理）
+        if (node->getRetryCount() >= 3) {
+            char failMsg[32];
+            snprintf(failMsg, sizeof(failMsg), "节点 %d 开启失败", node->getId());
+            strncpy(_ctx->prog.statusText, failMsg, 32);
+            Serial.printf("[AppProduction] CRITICAL: Node %d failed to open after 3 retries.\n", node->getId());
+            _dischargeIndex++; // 跳过该错误节点
+        }
     } 
-    // 所有开启指令已发出，但需等待足够的开启时长 (DISCHARGE_MIN_DURATION_MS)
     else if (now - _stateStartTime >= DISCHARGE_MIN_DURATION_MS) {
-        _dischargeIndex = 0; // 重置索引，用于后续逐个关闭
+        _dischargeIndex = 0;
         updateUIState(SYS_SEQ_CLOSE);
     }
 }
 
 void AppProduction::handleCloseState(unsigned long now) {
-    // 异步逐个分发关闭指令
-    if (_dischargeIndex < (int)_selectedIds.size()) {
-        int nodeId = _selectedIds[_dischargeIndex];
-        bool sent = _rs485->asyncWrite(nodeId, REG_CMD_CONTROL, CMD_SERVO_CLOSE, [this](Modbus::ResultCode res, uint16_t tid, void* data) {
-            this->_dischargeIndex++;
-            return true;
-        });
+    if (_dischargeIndex < (int)_selectedNodes.size()) {
+        WeightNode* node = _selectedNodes[_dischargeIndex];
+        
+        if (!node->isServoOpen()) {
+            _dischargeIndex++;
+            return;
+        }
+
+        if (node->asyncCloseServo()) {
+            Serial.printf("[AppProduction] Sending CLOSE to Node %d...\n", node->getId());
+        }
     } else {
         // 所有舵机关闭完成后，启动皮带运行
-        _b2->stop(); // 重要：高优先级物理互锁，确保输出带停止，为收集带让路
+        _b2->stop(); 
         _belt2Running = false;
 
         _b1->moveDistanceMm(2000);
@@ -209,7 +225,17 @@ void AppProduction::updateUIState(SystemStatus status, uint32_t mask, float weig
     } else {
         switch (status) {
             case SYS_READY:         strncpy(_ctx->prog.statusText, "就绪", 32); break;
-            case SYS_SEQ_DROP:      strncpy(_ctx->prog.statusText, "逐个下料中", 32); break;
+            case SYS_SEQ_DROP: {
+                // 组合反馈：显示选中的 ID 列表和重量
+                char idList[24] = "";
+                for (int i = 0; i < (int)_selectedNodes.size(); i++) {
+                    char buf[8];
+                    snprintf(buf, sizeof(buf), "%d%s", _selectedNodes[i]->getId(), (i == (int)_selectedNodes.size() - 1) ? "" : ",");
+                    strncat(idList, buf, sizeof(idList) - strlen(idList) - 1);
+                }
+                snprintf(_ctx->prog.statusText, 32, "下料:%s (%.1fg)", idList, weight);
+                break;
+            }
             case SYS_SEQ_CLOSE:     strncpy(_ctx->prog.statusText, "逐个关闭中", 32); break;
             case SYS_SETTLE_STABLE: strncpy(_ctx->prog.statusText, "沉降稳定中", 32); break;
             case SYS_BELT_A:        strncpy(_ctx->prog.statusText, "收集皮带运行", 32); break;

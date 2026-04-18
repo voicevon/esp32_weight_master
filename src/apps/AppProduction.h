@@ -6,10 +6,11 @@
 #include <vector>
 #include <Preferences.h>
 
-class PollManager;
 class ModbusMaster;
 class CombinationEngine;
 class Belt;
+class NodeManager;
+class WeightNode;
 
 /**
  * @class AppProduction
@@ -18,7 +19,7 @@ class Belt;
  */
 class AppProduction : public IApp {
 public:
-    AppProduction(SystemContext* ctx, PollManager* pollMgr, ModbusMaster* rs485,
+    AppProduction(SystemContext* ctx, NodeManager* pollMgr, ModbusMaster* rs485,
                   CombinationEngine* engine, Belt* b1, Belt* b2,
                   SemaphoreHandle_t mutex);
 
@@ -33,7 +34,7 @@ public:
 
 private:
     SystemContext*      _ctx;
-    PollManager*        _pollMgr;
+    NodeManager*        _pollMgr;
     ModbusMaster*       _rs485;
     CombinationEngine*  _engine;
     Belt*               _b1;
@@ -45,9 +46,9 @@ private:
     uint8_t             _currentPollId = 1;
     
     // 异步状态机变量
-    unsigned long       _stateStartTime = 0;
-    std::vector<int>    _selectedIds;
-    int                 _dischargeIndex = 0;
+    unsigned long            _stateStartTime = 0;
+    std::vector<WeightNode*> _selectedNodes;
+    int                      _dischargeIndex = 0;
     float               _lastCombinedWeight = 0;
     unsigned long       _belt2StartTime = 0;
     bool                _belt2Running = false;
