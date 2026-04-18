@@ -21,6 +21,9 @@ public:
     // 退出应用：清理或保存状态
     virtual void onExit() = 0;
 
+    // 请求取消操作（软取消，供 UI 触发）
+    virtual void requestCancel() {}
+
     // 获取当前应用对应的模式
     virtual OperationMode getMode() const = 0;
 

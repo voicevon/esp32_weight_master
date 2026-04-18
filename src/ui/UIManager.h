@@ -59,6 +59,7 @@ private:
     lv_obj_t* scan_progress_label = nullptr;
     lv_obj_t* scan_blocks[5][21]; // [cycle][id]
     lv_obj_t* scan_confirm_btn = nullptr;
+    lv_obj_t* scan_cancel_btn = nullptr;
     lv_obj_t* servo_btns[21];    // 核心 UI 引用
     lv_obj_t* target_sheet = nullptr;
     lv_obj_t* target_sheet_bg = nullptr;

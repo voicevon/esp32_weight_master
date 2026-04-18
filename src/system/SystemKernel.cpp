@@ -66,6 +66,13 @@ void SystemKernel::cmdStartScan() {
     updateOperationMode(MODE_DIAG_SCAN);
 }
 
+void SystemKernel::cmdCancelScan() {
+    if (_currentMode == MODE_DIAG_SCAN && _currentApp) {
+        Serial.println("[Kernel] Cancel Scan REQUESTED.");
+        _currentApp->requestCancel();
+    }
+}
+
 void SystemKernel::cmdToggleDiagnosis(bool active) {
     // 仅透传业务逻辑状态，不再干预模式切换
 }
@@ -157,6 +164,7 @@ void SystemKernel::updateOperationMode(OperationMode newMode) {
     if (_pendingMode == newMode && _currentMode == newMode) return;
     Serial.printf("[Kernel] Mode Switch REQUESTED: %s\n", modeToStr(newMode));
     _pendingMode = newMode;
+    // 不在此处直接设置脏标记，而是在 executeModeSwitch 成功切换后设置
 }
 
 void SystemKernel::executeModeSwitch() {
@@ -172,6 +180,7 @@ void SystemKernel::executeModeSwitch() {
     
     xSemaphoreTake(_mutexCtx, portMAX_DELAY);
     _ctx->ui.curMode = _currentMode;
+    _ctx->prog.dirtyFlags |= DF_OP_MODE; // 设置运行模式脏标记
     xSemaphoreGive(_mutexCtx);
 
     _currentApp = findApp(_currentMode);
@@ -225,11 +234,24 @@ void SystemKernel::uiTaskEntry(void* self) {
 void SystemKernel::uiLoop() {
     Serial.println("[Kernel] UI Task Started on Core 0");
     while (true) {
+        // [脏标记同步逻辑]
+        xSemaphoreTake(_mutexCtx, portMAX_DELAY);
         _nodeMgr->fillUISnapshot(_ctx->ui);
         
+        // 捕获并在 UI 层累加脏标记
+        _ctx->ui.dirtyFlags |= _ctx->prog.dirtyFlags;
+        _ctx->prog.dirtyFlags = DF_NONE; // 重置逻辑层脏标记
+
+        // 总是保持实时数据的脏标记 (Suggestion 3 探讨：高频模拟量保持刷新)
+        _ctx->ui.dirtyFlags |= DF_LIVE_DATA; 
+
         if (_currentApp) {
-            _ctx->ui.isTareRunning = _currentApp->hasUIProgress();
-            _ctx->ui.tareProgress  = _currentApp->getUIProgress();
+            bool tareActive = _currentApp->hasUIProgress();
+            if (tareActive != _ctx->ui.isTareRunning) {
+                _ctx->ui.isTareRunning = tareActive;
+                _ctx->ui.dirtyFlags |= DF_PROGRESS;
+            }
+            _ctx->ui.tareProgress = _currentApp->getUIProgress();
 
             // 专门处理扫描数据的同步 (从 App 层拉取到 UI 快照层)
             if (_currentMode == MODE_DIAG_SCAN) {
@@ -241,6 +263,7 @@ void SystemKernel::uiLoop() {
                         _ctx->ui.scanResults[c][i] = scanApp->getScanResult(c, i);
                     }
                 }
+                _ctx->ui.dirtyFlags |= DF_PROGRESS;
             } else if (_currentMode == MODE_BELT_DIAG) {
                 _ctx->ui.beltDiagScanning = static_cast<AppBeltDiag*>(_currentApp)->isScanning();
                 _ctx->ui.beltStatus[0] = static_cast<AppBeltDiag*>(_currentApp)->getBeltStatus(0);
@@ -249,14 +272,27 @@ void SystemKernel::uiLoop() {
                 AppModbusDiag* diag = static_cast<AppModbusDiag*>(_currentApp);
                 _ctx->ui.diagSubMode = diag->getSubMode();
                 _ctx->ui.diagTargetNodeId = diag->getTargetId();
+                
+                // 核心修复：同步逻辑层生成的诊断数据到 UI 快照
+                _ctx->ui.serialAutoSend = _ctx->prog.diagAutoSend;
+                _ctx->ui.serialLogTick  = _ctx->prog.diagLogTick;
+                strncpy(_ctx->ui.serialLogLine, _ctx->prog.diagLogLine, sizeof(_ctx->ui.serialLogLine));
             }
         }
         
         _ctx->ui.lastCalcSuccess = _ctx->prog.lastCalcSuccess;
         memcpy(_ctx->ui.lastBatchWeights, _ctx->prog.lastBatchWeights, sizeof(_ctx->ui.lastBatchWeights));
 
+        xSemaphoreGive(_mutexCtx);
+
+        // UI 渲染 (传入带脏标记的上下文)
         _ui->updateDashboard(_ctx);
         
+        // 完成本轮渲染后，由于 UISnapshot 是 Dispatcher 所有的临时副本（或 UI 任务持久化）
+        // 我们需要确保 UIManager 内部能够处理完标志位。
+        // 或者：直接在此处手动清除 UI Snap 脏标记（因为 UIManager 已经同步执行完）
+        _ctx->ui.dirtyFlags = DF_NONE;
+
         lv_tick_inc(33);
         lv_timer_handler();
         vTaskDelay(pdMS_TO_TICKS(33));

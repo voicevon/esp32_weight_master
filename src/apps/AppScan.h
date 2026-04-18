@@ -21,6 +21,7 @@ public:
     void onEnter() override;
     void onLoop() override;
     void onExit() override;
+    void requestCancel() override { _cancelRequested = true; }
 
     OperationMode getMode() const override { return MODE_DIAG_SCAN; }
     bool isFinished() const override { return _isFinished; }
@@ -45,6 +46,7 @@ private:
     int  _scanCycle = 0;
     bool _scanHistory[5][21]; 
     bool _isFinished = false;
+    bool _cancelRequested = false;
     unsigned long _lastRequestTime = 0;
 
     void handleScanStep();

@@ -78,6 +78,23 @@ enum NodeStatus {
 };
 
 /**
+ * @brief UI 同步脏标记位掩码 (Suggestion 3)
+ */
+enum DirtyFlag : uint32_t {
+    DF_NONE          = 0x00000000,
+    DF_SYS_STATUS    = 0x00000001, // 系统业务状态 (sysStatus, statusText)
+    DF_OP_MODE       = 0x00000002, // 运行模式切换 (curMode)
+    DF_PROD_RES      = 0x00000004, // 生产结果 (batchWeight, idMask, calcSuccess)
+    DF_WEIGHT_LIST   = 0x00000008, // 生产模式：历史锁定重量列表 (lastBatchWeights snapshot)
+    DF_LIVE_DATA     = 0x00000010, // 节点实时重量变化
+    DF_NODE_DATA     = 0x00000020, // 节点白名单、在线状态、舵机状态等元数据变化
+    DF_PROGRESS      = 0x00000040, // 动作进度 (isTareRunning, tareProgress, scanProgress)
+    DF_CONFIG        = 0x00000080, // NVS 参数变化 (config.targetMin/Max)
+    DF_DIAG          = 0x00000100, // [新增] 诊断信息 (serialLog, diagStatus)
+    DF_ALL           = 0xFFFFFFFF
+};
+
+/**
  * @brief 系统生产设置 (持久化参数)
  */
 struct ProductionParams {
@@ -97,6 +114,13 @@ struct WSProductionState {
     uint32_t     idMask;          // 下料掩码
     float        lastBatchWeights[21]; // [新增] 最近一次组合中各节点的具体重量快照
     bool         lastCalcSuccess; // 上次寻解是否成功
+    
+    // 诊断层影子变量 (逻辑层更新，同步到 UI)
+    bool         diagAutoSend;     
+    char         diagLogLine[128]; 
+    uint32_t     diagLogTick;      
+
+    uint32_t     dirtyFlags;      // [新增] 脏标记位掩码
 };
 
 
@@ -141,6 +165,7 @@ struct UISnapshot {
     uint32_t      serialLogTick;      // 日志更新序列号
     bool          lastCalcSuccess;    // 生产模式：上次寻解是否成功
     float         lastBatchWeights[21]; // [新增] 最近一次组合中各节点的具体重量快照
+    uint32_t      dirtyFlags;           // [新增] 脏标记位掩码
 };
 
 #endif

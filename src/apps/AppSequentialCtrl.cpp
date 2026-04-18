@@ -100,6 +100,7 @@ void AppSequentialCtrl::handleSequenceStateMachine(unsigned long now) {
             if (now - _lastStepTime >= _curConfig.delayMs) {
                 _step++;
                 _progress = (_step * 100) / 20;
+                _ctx->prog.dirtyFlags |= DF_PROGRESS;
                 _state = STATE_SENDING;
             }
             break;

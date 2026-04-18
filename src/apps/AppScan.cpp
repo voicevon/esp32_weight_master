@@ -9,15 +9,25 @@ void AppScan::onEnter() {
     _isFinished = false;
     memset(_scanHistory, 0, sizeof(_scanHistory));
     _lastRequestTime = 0;
+    _cancelRequested = false;
 }
 
 void AppScan::onLoop() {
     if (_isFinished) return;
 
     // 检查总线状态
-    if (_rs485 && _rs485->getStatus() == ModbusMaster::ST_WAITING) {
-        return;
+    bool isWaiting = (_rs485 && _rs485->getStatus() == ModbusMaster::ST_WAITING);
+
+    // [新增] 响应 UI 取消请求
+    if (_cancelRequested) {
+        if (!isWaiting) {
+            Serial.println("[AppScan] CANCEL SAFE: Current Modbus transaction finished. Exiting.");
+            _isFinished = true;
+        }
+        return; // 取消后不继续执行后续逻辑
     }
+
+    if (isWaiting) return;
 
     // 如果刚发完请求（通过 _lastRequestTime 判断或驱动层状态）
     // 且现在驱动层已经非 WAITING，说明前一个节点的请求已由回调处理完成
@@ -46,9 +56,11 @@ void AppScan::onLoop() {
                 }
 
                 _nodeMgr->saveWhitelist(); // 应用后立即持久化到 NVS
+                _ctx->prog.dirtyFlags |= DF_NODE_DATA; // 节点白名单数据发生变更
                 Serial.println("[AppScan] Scan results applied using 3/5 rule and saved.");
             }
         }
+        _ctx->prog.dirtyFlags |= DF_PROGRESS; // 扫描进度变更
         return;
     }
 

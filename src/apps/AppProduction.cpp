@@ -133,6 +133,7 @@ void AppProduction::handleReadyState(unsigned long now) {
     _dischargeIndex = 0;
     _lastCombinedWeight = res.totalWeight;
     _stateStartTime = now;
+    _ctx->prog.dirtyFlags |= (DF_PROD_RES | DF_WEIGHT_LIST); // 重大结果变化
     updateUIState(SYS_SEQ_DROP, mask, res.totalWeight);
     Serial.printf("[AppProduction] Combined: %.1f g, Mask: 0x%08X\n", res.totalWeight, mask);
 }
@@ -265,8 +266,10 @@ void AppProduction::updateUIState(SystemStatus status, uint32_t mask, float weig
     if (weight > 0.0f) {
         _ctx->prog.batchWeight = weight;
         _ctx->config.accumulatedWeight += weight;
+        _ctx->prog.dirtyFlags |= DF_CONFIG; // 累计重量变化
         saveParams(); // 生产数据落盘
     }
+    _ctx->prog.dirtyFlags |= DF_SYS_STATUS; // 状态文案或状态枚举变化
     xSemaphoreGive(_mutex);
 }
 
@@ -301,6 +304,7 @@ void AppProduction::updateTargets(float deltaBase, float deltaOffset) {
 
     _ctx->config.targetMin = newBase;
     _ctx->config.targetMax = newBase + newOffset;
+    _ctx->prog.dirtyFlags |= DF_CONFIG; // 目标值设置变化
 
     saveParams();
     xSemaphoreGive(_mutex);

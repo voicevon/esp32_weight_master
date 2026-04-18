@@ -29,6 +29,7 @@ public:
     // ICommandBus 接口实现 (UI 交互桥梁)
     void cmdGlobalTare() override;
     void cmdStartScan() override;
+    void cmdCancelScan() override;
     void cmdToggleDiagnosis(bool active) override;
     void cmdServoTest(int id, bool open) override;
     void cmdGlobalServo(bool open) override;

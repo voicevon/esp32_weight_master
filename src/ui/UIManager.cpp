@@ -219,6 +219,13 @@ static void scan_confirm_btn_cb(lv_event_t * e) {
     if(ui) ui->deleteScanModal();
 }
 
+static void btn_scan_cancel_cb(lv_event_t * e) {
+    UIManager * ui = (UIManager*)lv_event_get_user_data(e);
+    if(ui && ui->getBus()) {
+        ui->getBus()->cmdCancelScan();
+    }
+}
+
 static void target_label_event_cb(lv_event_t * e) {
     UIManager* ui = (UIManager*)lv_event_get_user_data(e);
     if (ui) ui->showTargetBottomSheet();
@@ -744,6 +751,16 @@ void UIManager::buildScanModal() {
     lv_obj_set_style_text_font(btn_lbl, &ui_font_chs_16, 0);
     lv_label_set_text(btn_lbl, "确定");
     lv_obj_center(btn_lbl);
+
+    scan_cancel_btn = lv_btn_create(panel);
+    lv_obj_set_size(scan_cancel_btn, 140, 50);
+    lv_obj_align(scan_cancel_btn, LV_ALIGN_BOTTOM_MID, 0, -10); // 与确定按钮位置重叠，交替显示
+    lv_obj_set_style_bg_color(scan_cancel_btn, lv_color_hex(0x475569), 0);
+    lv_obj_add_event_cb(scan_cancel_btn, btn_scan_cancel_cb, LV_EVENT_CLICKED, this);
+    lv_obj_t* cancel_lbl = lv_label_create(scan_cancel_btn);
+    lv_obj_set_style_text_font(cancel_lbl, &ui_font_chs_16, 0);
+    lv_label_set_text(cancel_lbl, "取消");
+    lv_obj_center(cancel_lbl);
 }
 
 void UIManager::deleteScanModal() {
@@ -756,6 +773,7 @@ void UIManager::deleteScanModal() {
             for(int c=0; c<21; c++) scan_blocks[r][c] = nullptr;
         }
         scan_confirm_btn = nullptr;
+        scan_cancel_btn = nullptr;
     }
 }
 
@@ -795,6 +813,7 @@ void UIManager::updateScanModal(const SystemContext* ctx) {
         lv_obj_set_style_text_color(scan_title_label, lv_color_hex(0x22C55E), 0);
         lv_label_set_text(scan_progress_label, "");
         lv_obj_clear_flag(scan_confirm_btn, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(scan_cancel_btn, LV_OBJ_FLAG_HIDDEN);
     }
 }
 
@@ -803,10 +822,47 @@ void UIManager::updateDashboard(const SystemContext* ctx) {
     updateScanModal(ctx);
     char buf[64];
     
-    // 0. 序列化操作 (置零) UI 锁定与进度反馈
-    if (_isFirstUpdate || ctx->ui.isTareRunning != _lastSnapshot.isTareRunning || 
-        ctx->ui.tareProgress != _lastSnapshot.tareProgress) {
+    uint32_t flags = ctx->ui.dirtyFlags;
+
+    // 0. 模式与状态全局宏观更新
+    if (_isFirstUpdate || (flags & DF_OP_MODE)) {
+        if (ctx->ui.curMode == MODE_DIAG_SCAN) {
+            lv_label_set_text(status_label, "正在诊断与生成白名单..."); 
+            lv_obj_set_style_text_color(status_label, lv_color_hex(0x8B5CF6), 0);
+        }
+    }
+
+    if (ctx->ui.isTareRunning && (flags & DF_PROGRESS)) {
+        snprintf(buf, sizeof(buf), "正在执行全局%s... %d%%", ctx->ui.curMode == MODE_SERVO_TEST ? "测试" : "置零", ctx->ui.tareProgress);
+        lv_label_set_text(status_label, buf);
+        lv_obj_set_style_text_color(status_label, lv_color_hex(0xFBBF24), 0);
+    } else if (_isFirstUpdate || (flags & DF_SYS_STATUS)) {
+        // 直接渲染逻辑层下发的文案
+        lv_label_set_text(status_label, ctx->prog.statusText);
         
+        // 基础视觉反馈配色
+        uint32_t color = 0x22C55E; // 默认：绿色 (就绪数据稳定)
+        if (ctx->prog.sysStatus == SYS_SEQ_DROP || ctx->prog.sysStatus == SYS_SETTLE_STABLE) {
+            color = 0xFBBF24; // 琥珀色：落料与沉降中
+        } else if (ctx->prog.sysStatus == SYS_BELT_A || ctx->prog.sysStatus == SYS_BELT_B) {
+            color = 0x38BDF8; // 天蓝色：机械传送运行
+        }
+        lv_obj_set_style_text_color(status_label, lv_color_hex(color), 0);
+    }
+
+    // 1. 生产数据统计
+    if (_isFirstUpdate || (flags & DF_CONFIG)) {
+        // 总产量 (kg)
+        snprintf(buf, sizeof(buf), "总产量: %.3f kg", ctx->config.accumulatedWeight / 1000.0f);
+        lv_label_set_text(accu_weight_label, buf);
+
+        // 目标范围
+        snprintf(buf, sizeof(buf), "目标: %.0f + %.0fg", ctx->config.targetMin, ctx->config.targetMax - ctx->config.targetMin);
+        lv_label_set_text(target_label, buf);
+    }
+
+    // 2. 序列操作与动作进度
+    if (_isFirstUpdate || (flags & DF_PROGRESS)) {
         bool busy = ctx->ui.isTareRunning;
         int progress = ctx->ui.tareProgress;
 
@@ -824,69 +880,19 @@ void UIManager::updateDashboard(const SystemContext* ctx) {
         }
     }
 
-    // 1. 状态栏更新 (仅在状态或模式变化时更新)
-    bool modeChanged = (_isFirstUpdate || ctx->ui.curMode != _lastSnapshot.curMode);
-    // 简化逻辑：状态由 ctx->prog 控制，Snapshot 暂未包含全部，通过 static lastStatus 优化高频部分
-
-    if (ctx->ui.curMode == MODE_DIAG_SCAN) {
-        if (modeChanged) {
-            lv_label_set_text(status_label, "正在诊断与生成白名单..."); 
-            lv_obj_set_style_text_color(status_label, lv_color_hex(0x8B5CF6), 0);
-        }
-    } else {
-        // 状态更新逻辑 (由逻辑层决定显示文案，UI 仅负责渲染与视觉反馈)
-        static SystemStatus lastStatus = (SystemStatus)-1;
-        if (_isFirstUpdate || ctx->prog.sysStatus != lastStatus || modeChanged) {
-            lastStatus = ctx->prog.sysStatus;
-            
-            // 直接渲染逻辑层下发的文案
-            lv_label_set_text(status_label, ctx->prog.statusText);
-            
-            // 基础视觉反馈配色
-            uint32_t color = 0x22C55E; // 默认：绿色 (就绪数据稳定)
-            if (ctx->prog.sysStatus == SYS_SEQ_DROP || ctx->prog.sysStatus == SYS_SETTLE_STABLE) {
-                color = 0xFBBF24; // 琥珀色：落料与沉降中
-            } else if (ctx->prog.sysStatus == SYS_BELT_A || ctx->prog.sysStatus == SYS_BELT_B) {
-                color = 0x38BDF8; // 天蓝色：机械传送运行
-            }
-            
-            lv_obj_set_style_text_color(status_label, lv_color_hex(color), 0);
-        }
-    }
-
-    // 2. 生产数据统计 (Dirty Check)
-    static float lastAccu = -1.0f;
-    if (_isFirstUpdate || ctx->config.accumulatedWeight != lastAccu) {
-        lastAccu = ctx->config.accumulatedWeight;
-        // 用户要求显示为 kg, 三位小数 (1.234 kg 格式)
-        snprintf(buf, sizeof(buf), "总产量: %.3f kg", lastAccu / 1000.0f);
-        lv_label_set_text(accu_weight_label, buf);
-    }
-
-    static float lastMin = -1.0f, lastMax = -1.0f;
-    if (_isFirstUpdate || ctx->config.targetMin != lastMin || ctx->config.targetMax != lastMax) {
-        lastMin = ctx->config.targetMin; lastMax = ctx->config.targetMax;
-        snprintf(buf, sizeof(buf), "目标: %.0f + %.0fg", lastMin, lastMax - lastMin);
-        lv_label_set_text(target_label, buf);
-    }
-
-    // 3. 核心三段式重量显示
-    static float lastStable = -1.0f, lastUnstable = -1.0f;
-    if (_isFirstUpdate || ctx->ui.stableWeightSum != lastStable || ctx->ui.unstableWeightSum != lastUnstable) {
-        lastStable = ctx->ui.stableWeightSum;
-        lastUnstable = ctx->ui.unstableWeightSum;
-        
+    // 3. 核心重量显示 (主数值、合计及寻解状态)
+    if (_isFirstUpdate || (flags & (DF_LIVE_DATA | DF_PROD_RES))) {
         // 段 1: 已稳重量 (限定 999g 以内)
-        snprintf(buf, sizeof(buf), "%d g", (int)fminf(lastStable, 999.0f));
+        snprintf(buf, sizeof(buf), "%d g", (int)fminf(ctx->ui.stableWeightSum, 999.0f));
         lv_label_set_text(label_stable_total, buf);
         
         // 视觉反馈：如果寻解失败显示红色，否则显示翠绿色
         uint32_t totalColor = ctx->prog.lastCalcSuccess ? 0x10B981 : 0xEF4444;
         lv_obj_set_style_text_color(label_stable_total, lv_color_hex(totalColor), 0);
         
-        // 段 2: 未稳重量 (紧跟 + 符号)
-        if (lastUnstable > 0.1f) {
-            snprintf(buf, sizeof(buf), "+ %d g", (int)fminf(lastUnstable, 999.0f));
+        // 段 2: 未稳重量
+        if (ctx->ui.unstableWeightSum > 0.1f) {
+            snprintf(buf, sizeof(buf), "+ %d g", (int)fminf(ctx->ui.unstableWeightSum, 999.0f));
             lv_label_set_text(label_unstable_total, buf);
             lv_obj_set_style_text_color(label_unstable_total, lv_color_hex(0xF59E0B), 0);
             lv_obj_clear_flag(label_unstable_total, LV_OBJ_FLAG_HIDDEN);
@@ -894,178 +900,133 @@ void UIManager::updateDashboard(const SystemContext* ctx) {
             lv_obj_add_flag(label_unstable_total, LV_OBJ_FLAG_HIDDEN);
         }
         
-        // 合计 (仅数值部分)
-        snprintf(buf, sizeof(buf), "%d g", (int)fminf(lastStable + lastUnstable, 999.0f));
+        // 合计
+        snprintf(buf, sizeof(buf), "%d g", (int)fminf(ctx->ui.stableWeightSum + ctx->ui.unstableWeightSum, 999.0f));
         lv_label_set_text(label_grand_total, buf);
     }
 
-    // [新增] 同步上轮成功组合的重量 (持久显示)
-    static float lastBatchWeight = -1.0f;
-    if (_isFirstUpdate || ctx->prog.batchWeight != lastBatchWeight) {
-        lastBatchWeight = ctx->prog.batchWeight;
+    // 4. 上次成功组合重量 (Snapshot)
+    if (_isFirstUpdate || (flags & DF_WEIGHT_LIST)) {
         if (label_last_batch_val) {
-            snprintf(buf, sizeof(buf), "%.1f g", lastBatchWeight);
+            snprintf(buf, sizeof(buf), "%.1f g", ctx->prog.batchWeight);
             lv_label_set_text(label_last_batch_val, buf);
         }
     }
 
-    // 3. 核心优化：20 个节点的 Bar Graph (Dirty Check)
-    uint32_t selectionMask = ctx->prog.idMask;
-    static uint32_t lastMask = 0;
-
-    for(int i = 1; i <= NUM_SLAVES; i++) {
-        if (!node_bars[i]) continue;
-        
-        bool weightChanged = (_isFirstUpdate || ctx->ui.currentWeights[i] != _lastSnapshot.currentWeights[i]);
-        bool stableChanged = (_isFirstUpdate || ctx->ui.stableNodes[i] != _lastSnapshot.stableNodes[i]);
-        bool onlineChanged = (_isFirstUpdate || ctx->ui.onlineNodes[i] != _lastSnapshot.onlineNodes[i]);
-        bool wlChanged     = (_isFirstUpdate || ctx->ui.whitelistedNodes[i] != _lastSnapshot.whitelistedNodes[i]);
-        bool maskChanged   = (_isFirstUpdate || (selectionMask & (1 << (i-1))) != (lastMask & (1 << (i-1))));
-        bool successChanged = (_isFirstUpdate || ctx->prog.lastCalcSuccess != _lastSnapshot.lastCalcSuccess); // 应该包含在 snapshot 或者直接从 prog 读
-
-        if (weightChanged || maskChanged || _isFirstUpdate) {
-            float weight = (selectionMask & (1 << (i-1))) ? ctx->ui.lastBatchWeights[i] : ctx->ui.currentWeights[i];
+    // 5. 节点图表 (实时重量与状态)
+    if (_isFirstUpdate || (flags & (DF_LIVE_DATA | DF_PROD_RES | DF_NODE_DATA))) {
+        uint32_t selectionMask = ctx->prog.idMask;
+        for(int i = 1; i <= NUM_SLAVES; i++) {
+            if (!node_bars[i]) continue;
             
-            lv_bar_set_value(node_bars[i], (int)ctx->ui.currentWeights[i], LV_ANIM_OFF);
-            snprintf(buf, sizeof(buf), "%.0f", weight);
-            lv_label_set_text(node_weight_labels[i], buf);
-        }
-
-        if (wlChanged || _isFirstUpdate) {
-            // 背景色：白名单为暗绿，非白名单为深灰
-            lv_obj_set_style_bg_color(node_bars[i], ctx->ui.whitelistedNodes[i] ? lv_color_hex(0x064E3B) : lv_color_hex(0x334155), LV_PART_MAIN);
-        }
-
-        if (stableChanged || maskChanged || onlineChanged || successChanged || _isFirstUpdate) {
-            uint32_t color = 0x475569; // 默认灰色
             bool isSelected = (selectionMask & (1 << (i - 1)));
+            float val = isSelected ? ctx->ui.lastBatchWeights[i] : ctx->ui.currentWeights[i];
             
-            if (!ctx->ui.onlineNodes[i]) {
-                color = 0x334155; // 深蓝灰：离线/非工作
-            } else if (isSelected) {
-                color = 0x2563EB; // 纯蓝色 (Blue 600)：下料选中且锁定
-            } else if (ctx->ui.stableNodes[i]) {
-                color = 0x10B981; // 翠绿色：稳定
-            } else {
-                color = 0xF59E0B; // 橙黄色：不稳定
+            // 更新进度条高度
+            lv_bar_set_value(node_bars[i], (int)ctx->ui.currentWeights[i], LV_ANIM_OFF);
+            
+            // 更新数值
+            snprintf(buf, sizeof(buf), "%.0f", val);
+            lv_label_set_text(node_weight_labels[i], buf);
+
+            // 更新背景色 (仅限白名单变动时或首次)
+            if (_isFirstUpdate || (flags & DF_NODE_DATA)) {
+                lv_obj_set_style_bg_color(node_bars[i], ctx->ui.whitelistedNodes[i] ? lv_color_hex(0x064E3B) : lv_color_hex(0x334155), LV_PART_MAIN);
             }
+
+            // 更新状态配色
+            uint32_t color = 0x475569; 
+            if (!ctx->ui.onlineNodes[i]) color = 0x334155;
+            else if (isSelected) color = 0x2563EB;
+            else if (ctx->ui.stableNodes[i]) color = 0x10B981;
+            else color = 0xF59E0B;
 
             lv_obj_set_style_bg_color(node_bars[i], lv_color_hex(color), LV_PART_INDICATOR);
             lv_obj_set_style_text_color(node_weight_labels[i], lv_color_hex(color), 0);
             
-            // 位置调整：选中时显示在顶部，非选中显示在底部
-            if (isSelected) {
-                lv_obj_align(node_weight_labels[i], LV_ALIGN_TOP_MID, 0, -22); 
-            } else {
-                lv_obj_align(node_weight_labels[i], LV_ALIGN_TOP_MID, 0, 190);
-            }
+            // 位置微调 (选中 vs 未选中)
+            if (isSelected) lv_obj_align(node_weight_labels[i], LV_ALIGN_TOP_MID, 0, -22); 
+            else lv_obj_align(node_weight_labels[i], LV_ALIGN_TOP_MID, 0, 190);
         }
     }
-    lastMask = selectionMask;
 
-    // 4. 管理员界面同步 (低频)
-    if (admin_tab) {
-        // [新增] 白名单预览指示器实时同步
+    // 6. 管理员界面维护 (低频同步)
+    if (admin_tab && (_isFirstUpdate || (flags & (DF_NODE_DATA | DF_LIVE_DATA | DF_OP_MODE | DF_DIAG)))) {
         for(int i=1; i<=20; i++) {
             if (whitelist_indicators[i]) {
-                uint32_t color = ctx->ui.whitelistedNodes[i] ? 0x22C55E : 0x475569; // 绿=在名单, 灰=不在
+                uint32_t color = ctx->ui.whitelistedNodes[i] ? 0x22C55E : 0x475569;
                 lv_obj_set_style_bg_color(whitelist_indicators[i], lv_color_hex(color), 0);
             }
-        }
-
-        // 5. 舵机测试状态同步 (红/绿/紫 3色逻辑)
-        for(int i=1; i<=20; i++) {
-            if (!servo_btns[i]) continue;
-            int8_t state = ctx->ui.servoRealStates[i];
-            uint32_t color = 0x475569; // 默认深灰
-            
-            if (state == 1)      color = 0x22C55E; // 绿色 (开)
-            else if (state == 0) color = 0xA855F7; // 紫色 (关)
-            else if (state == -1) color = 0xEF4444; // 红色 (故障/离线)
-            
-            lv_obj_set_style_bg_color(servo_btns[i], lv_color_hex(color), 0);
-        }
-
-        // 6. 皮带诊断 UI 状态同步
-        if (ctx->ui.curMode == MODE_BELT_DIAG) {
-            if (belt_scan_btn) {
-                lv_obj_set_style_bg_color(belt_scan_btn, 
-                    ctx->ui.beltDiagScanning ? lv_color_hex(0xD97706) : lv_color_hex(0x8B5CF6), 0);
-            }
-
-            if (belt1_status_indicator) {
-                uint32_t c1 = 0x475569;
-                const char* st1 = "等待扫描";
-                if (ctx->ui.beltDiagScanning) { c1 = 0xD97706; st1 = "扫描中..."; }
-                else if (ctx->ui.beltIsMoving[0]) { c1 = 0x38BDF8; st1 = "运行中"; }
-                else {
-                    int8_t s = ctx->ui.beltStatus[0];
-                    const char* st_map[] = {"等待扫描", "在线", "通讯失败", "通讯超时"};
-                    uint32_t col_map[] = {0x475569, 0x22C55E, 0xEF4444, 0xF59E0B};
-                    if (s >= 0 && s <= 3) { st1 = st_map[s]; c1 = col_map[s]; }
-                }
-                lv_obj_set_style_bg_color(belt1_status_indicator, lv_color_hex(c1), 0);
-                lv_label_set_text(belt1_status_indicator, st1);
-            }
-
-            if (belt2_status_indicator) {
-                uint32_t c2 = 0x475569;
-                const char* st2 = "等待扫描";
-                if (ctx->ui.beltDiagScanning) { c2 = 0xD97706; st2 = "扫描中..."; }
-                else if (ctx->ui.beltIsMoving[1]) { c2 = 0x38BDF8; st2 = "运行中"; }
-                else {
-                    int8_t s = ctx->ui.beltStatus[1];
-                    const char* st_map[] = {"等待扫描", "在线", "通讯失败", "通讯超时"};
-                    uint32_t col_map[] = {0x475569, 0x22C55E, 0xEF4444, 0xF59E0B};
-                    if (s >= 0 && s <= 3) { st2 = st_map[s]; c2 = col_map[s]; }
-                }
-                lv_obj_set_style_bg_color(belt2_status_indicator, lv_color_hex(c2), 0);
-                lv_label_set_text(belt2_status_indicator, st2);
-            }
-        } else if (ctx->ui.curMode == MODE_MODBUS_DIAG) {
-            // 7. Modbus 诊断器状态同步 (精简版)
-            
-            // 7.1 脉冲开关同步
-            if (diag_switch) {
-                bool isAuto = ctx->ui.serialAutoSend;
-                if (isAuto != lv_obj_has_state(diag_switch, LV_STATE_CHECKED)) {
-                    if (isAuto) lv_obj_add_state(diag_switch, LV_STATE_CHECKED);
-                    else lv_obj_clear_state(diag_switch, LV_STATE_CHECKED);
-                }
-            }
-            
-            // 7.2 日志滚动刷新
-            static uint32_t lastLogTick = 0;
-            if (ctx->ui.serialLogTick != lastLogTick) {
-                lastLogTick = ctx->ui.serialLogTick;
-                if (diag_log_view && ctx->ui.serialLogLine[0]) {
-                    const char* line = ctx->ui.serialLogLine;
-                    uint32_t color = 0xFFFFFF; // 默认白色
-                    
-                    if (strstr(line, "[TX >]"))      color = 0xFDE047; // 黄色
-                    else if (strstr(line, "[RX <]")) color = 0x22C55E; // 绿色
-                    else if (strstr(line, "[ERR]") || strstr(line, "[WAR]")) color = 0xEF4444; // 红色
-
-                    lv_obj_t* log_item = lv_label_create(diag_log_view);
-                    lv_obj_set_width(log_item, LV_PCT(100));
-                    lv_label_set_text(log_item, line);
-                    lv_label_set_long_mode(log_item, LV_LABEL_LONG_WRAP);
-                    lv_obj_set_style_text_color(log_item, lv_color_hex(color), 0);
-                    lv_obj_set_style_text_font(log_item, &lv_font_montserrat_12, 0);
-
-                    // 内存自动管理：保留最新 25 条
-                    if (lv_obj_get_child_cnt(diag_log_view) > 25) {
-                        lv_obj_del(lv_obj_get_child(diag_log_view, 0));
-                    }
-
-                    // 自动滚动到最新
-                    lv_obj_scroll_to_view(log_item, LV_ANIM_OFF);
-                }
+            if (servo_btns[i]) {
+                int8_t state = ctx->ui.servoRealStates[i];
+                uint32_t color = 0x475569;
+                if (state == 1)      color = 0x22C55E;
+                else if (state == 0) color = 0xA855F7;
+                else if (state == -1) color = 0xEF4444;
+                lv_obj_set_style_bg_color(servo_btns[i], lv_color_hex(color), 0);
             }
         }
     }
 
-    // 更新 Snapshot 为下一帧做准备
+    // 7. 皮带诊断状态同步
+    if (ctx->ui.curMode == MODE_BELT_DIAG && (flags & (DF_PROGRESS | DF_OP_MODE))) {
+        int8_t status[] = {ctx->ui.beltStatus[0], ctx->ui.beltStatus[1]};
+        lv_obj_t* indicators[] = {belt1_status_indicator, belt2_status_indicator};
+        
+        for (int i = 0; i < 2; i++) {
+            if (!indicators[i]) continue;
+            
+            const char* text = "未知";
+            uint32_t color = 0x475569; // 默认灰色 (离线)
+            
+            switch (status[i]) {
+                case 1: text = "就绪"; color = 0x10B981; break; // 绿色
+                case 2: text = "运行"; color = 0x3B82F6; break; // 蓝色
+                case 3: text = "故障"; color = 0xEF4444; break; // 红色
+                default: text = "离线"; color = 0x475569; break;
+            }
+            
+            lv_label_set_text(indicators[i], text);
+            lv_obj_set_style_bg_color(indicators[i], lv_color_hex(color), 0);
+        }
+    }
+
+    // 8. Modbus 诊断终端同步
+    if (ctx->ui.curMode == MODE_MODBUS_DIAG && (flags & (DF_DIAG | DF_OP_MODE))) {
+        // 同步开关状态 (避免重复触发事件)
+        if (diag_switch) {
+            bool isAuto = ctx->ui.serialAutoSend;
+            if (isAuto != lv_obj_has_state(diag_switch, LV_STATE_CHECKED)) {
+                if (isAuto) lv_obj_add_state(diag_switch, LV_STATE_CHECKED);
+                else lv_obj_clear_state(diag_switch, LV_STATE_CHECKED);
+            }
+        }
+
+        // 增量日志追加
+        static uint32_t lastLogTick = 0;
+        if (ctx->ui.serialLogTick != lastLogTick && diag_log_view) {
+            lastLogTick = ctx->ui.serialLogTick;
+
+            lv_obj_t* line = lv_label_create(diag_log_view);
+            lv_obj_set_width(line, LV_PCT(100));
+            lv_obj_set_style_text_font(line, &lv_font_montserrat_12, 0);
+            
+            // 根据日志标签着色
+            uint32_t color = 0x10B981; // 默认绿色 (TX)
+            if (strstr(ctx->ui.serialLogLine, "[RX <]")) color = 0x38BDF8; // 蓝色
+            else if (strstr(ctx->ui.serialLogLine, "[SYS]")) color = 0x94A3B8; // 灰色
+            
+            lv_obj_set_style_text_color(line, lv_color_hex(color), 0);
+            lv_label_set_text(line, ctx->ui.serialLogLine);
+            lv_obj_scroll_to_view(line, LV_ANIM_OFF);
+
+            // 限制条数：最多保留 40 条
+            if (lv_obj_get_child_cnt(diag_log_view) > 40) {
+                lv_obj_del(lv_obj_get_child(diag_log_view, 0));
+            }
+        }
+    }
+
     _lastSnapshot = ctx->ui;
     _isFirstUpdate = false;
 }
