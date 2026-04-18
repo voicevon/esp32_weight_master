@@ -17,9 +17,13 @@ void AppSequentialCtrl::onEnter() {
             break;
         case ACT_GLOBAL_OPEN:
             _curConfig = { REG_CMD_CONTROL, CMD_SERVO_OPEN, 150, "SERVO_OPEN" };
+            strncpy(_ctx->prog.statusText, "正在开启白名单舵机...", 32);
+            _ctx->ui.activeSeqAction = 1;
             break;
         case ACT_GLOBAL_CLOSE:
             _curConfig = { REG_CMD_CONTROL, CMD_SERVO_CLOSE, 150, "SERVO_CLOSE" };
+            strncpy(_ctx->prog.statusText, "正在关闭白名单舵机...", 32);
+            _ctx->ui.activeSeqAction = 2;
             break;
         default:
             Serial.println("[AppSequentialCtrl] Unknown Action, finishing immediately.");
@@ -40,6 +44,8 @@ void AppSequentialCtrl::onExit() {
     Serial.println("[AppSequentialCtrl] Sequential Control Mode Exited.");
     _pendingAction = ACT_NONE;
     _state = STATE_IDLE;
+    _ctx->ui.activeSeqNode = 0;
+    _ctx->ui.activeSeqAction = 0;
 }
 
 void AppSequentialCtrl::triggerGlobalTare() {
@@ -70,6 +76,7 @@ void AppSequentialCtrl::handleSequenceStateMachine(unsigned long now) {
 
                     if (sent) {
                         _state = STATE_WAITING;
+                        _ctx->ui.activeSeqNode = nodeId; // 同步当前操作节点 ID
                     }
                 } else {
                     // 跳过非白名单节点
@@ -109,6 +116,8 @@ void AppSequentialCtrl::handleSequenceStateMachine(unsigned long now) {
             _isFinished = true;
             _progress = 100;
             _state = STATE_IDLE;
+            _ctx->ui.activeSeqNode = 0;
+            _ctx->ui.activeSeqAction = 0;
             Serial.printf("[AppSequentialCtrl] Sequence %s Completed.\n", _curConfig.label);
             break;
         

@@ -140,6 +140,8 @@ struct UISnapshot {
     // 序列控制进度 (用于 UI 锁定与反馈)
     bool          isTareRunning;      // 是否正在执行全局置零
     int           tareProgress;       // 置零进度 (0-100)
+    int           activeSeqNode;      // 当前正在执行动作的节点 ID (0 表示无)
+    int           activeSeqAction;    // 1: 开启, 2: 关闭, 0: 无
 
     // 扫描与诊断同步 (由 PollManager 填充)
     int           scanProgress;

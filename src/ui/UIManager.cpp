@@ -524,23 +524,25 @@ void UIManager::buildAdminView(lv_obj_t* parent) {
     lv_obj_set_style_border_width(servo_cont, 0, 0);
 
     lv_obj_t* btn_g_open = lv_btn_create(servo_cont);
-    lv_obj_set_size(btn_g_open, 120, 45);
-    lv_obj_align(btn_g_open, LV_ALIGN_TOP_LEFT, 10, 5);
+    lv_obj_set_size(btn_g_open, 120, 55); // 增加高度以容纳两行
+    lv_obj_align(btn_g_open, LV_ALIGN_TOP_LEFT, 10, 0);
     lv_obj_set_style_bg_color(btn_g_open, lv_color_hex(0x10B981), 0);
     lv_obj_add_event_cb(btn_g_open, btn_global_open_cb, LV_EVENT_CLICKED, this);
     lv_obj_t* lbl_g_open = lv_label_create(btn_g_open);
     lv_obj_set_style_text_font(lbl_g_open, &ui_font_chs_16, 0);
-    lv_label_set_text(lbl_g_open, "全部开启");
+    lv_label_set_text(lbl_g_open, "全部开启\n#E2E8F0 (仅白名单)#");
+    lv_label_set_recolor(lbl_g_open, true);
     lv_obj_center(lbl_g_open);
 
     lv_obj_t* btn_g_close = lv_btn_create(servo_cont);
-    lv_obj_set_size(btn_g_close, 120, 45);
-    lv_obj_align(btn_g_close, LV_ALIGN_TOP_LEFT, 140, 5);
+    lv_obj_set_size(btn_g_close, 120, 55); // 增加高度以容纳两行
+    lv_obj_align(btn_g_close, LV_ALIGN_TOP_LEFT, 140, 0);
     lv_obj_set_style_bg_color(btn_g_close, lv_color_hex(0x6366F1), 0);
     lv_obj_add_event_cb(btn_g_close, btn_global_close_cb, LV_EVENT_CLICKED, this);
     lv_obj_t* lbl_g_close = lv_label_create(btn_g_close);
     lv_obj_set_style_text_font(lbl_g_close, &ui_font_chs_16, 0);
-    lv_label_set_text(lbl_g_close, "全部关闭");
+    lv_label_set_text(lbl_g_close, "全部关闭\n#E2E8F0 (仅白名单)#");
+    lv_label_set_recolor(lbl_g_close, true);
     lv_obj_center(lbl_g_close);
 
     lv_obj_t* s_grid = lv_obj_create(servo_cont);
@@ -958,11 +960,31 @@ void UIManager::updateDashboard(const SystemContext* ctx) {
                 lv_obj_set_style_bg_color(whitelist_indicators[i], lv_color_hex(color), 0);
             }
             if (servo_btns[i]) {
-                int8_t state = ctx->ui.servoRealStates[i];
                 uint32_t color = 0x475569;
-                if (state == 1)      color = 0x22C55E;
-                else if (state == 0) color = 0xA855F7;
-                else if (state == -1) color = 0xEF4444;
+                
+                // 1. 优先渲染闪烁光标 (Seq Tracking)
+                if (ctx->ui.activeSeqNode == i) {
+                    bool flashOn = (millis() / 250) % 2;
+                    if (flashOn) {
+                        color = (ctx->ui.activeSeqAction == 1) ? 0x22C55E : 0x3B82F6; // 绿闪 vs 蓝闪
+                    } else {
+                        color = 0x1E293B; // 背景深蓝色
+                    }
+                } 
+                // 2. 批量模式非白名单置黑
+                else if (ctx->ui.activeSeqNode > 0 && !ctx->ui.whitelistedNodes[i]) {
+                    color = 0x000000; // 黑色
+                }
+                // 3. 常规状态显示
+                else {
+                    int8_t state = ctx->ui.servoRealStates[i];
+                    if (state == 1)      color = 0x22C55E; // 绿色 (常开)
+                    else if (state == 0) color = 0xA855F7; // 紫色 (常闭)
+                    else if (state == -1) color = 0xEF4444; // 红色 (故障)
+                    
+                    // 批量模式中，非当前节点但非白名单的逻辑已在上方拦截
+                }
+                
                 lv_obj_set_style_bg_color(servo_btns[i], lv_color_hex(color), 0);
             }
         }
