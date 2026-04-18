@@ -33,7 +33,9 @@ public:
     float getWeight() const { return _weight; }
     bool  isStable() const { return _stable; }
     bool  isOnline() const { return _online; }
-    bool  isWhitelisted() const { return _whitelisted; }
+    bool  isHealthy() const { return _isHealthy; }
+    void  setHealthy(bool h) { _isHealthy = h; }
+    bool  isWhitelisted() const { return _whitelisted && _isHealthy; }
     bool  isServoOpen() const { return _servoOpen; }
     int   getRetryCount() const { return _retryCount; }
     NodeStatus getStatus() const { return _status; }
@@ -56,6 +58,7 @@ private:
     bool       _stable = false;
     bool       _online = false;
     bool       _whitelisted = true;
+    bool       _isHealthy = true;
     bool       _servoOpen = false;
     uint8_t    _doorPhase = 0;
     NodeStatus _status = NODE_DIRTY;

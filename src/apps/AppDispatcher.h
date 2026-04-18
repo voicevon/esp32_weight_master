@@ -21,7 +21,7 @@ class NodeManager;
  */
 class AppDispatcher : public ICommandBus {
 public:
-    AppDispatcher(SystemContext* ctx, ModbusMaster* rs485, NodeManager* pollMgr, UIManager* ui, Belt* b1, Belt* b2);
+    AppDispatcher(SystemContext* ctx, ModbusMaster* rs485, NodeManager* nodeMgr, UIManager* ui, Belt* b1, Belt* b2);
 
     void registerApp(IApp* app);
     void begin(OperationMode initialMode = MODE_PRODUCTION);
@@ -52,7 +52,7 @@ private:
     // 资源
     SystemContext*        _ctx;
     ModbusMaster*         _rs485;
-    NodeManager*          _pollMgr;
+    NodeManager*          _nodeMgr;
     UIManager*            _ui;
     Belt*                 _b1;
     Belt*                 _b2;

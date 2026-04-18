@@ -58,7 +58,7 @@ void AppSequentialCtrl::handleSequenceStateMachine(unsigned long now) {
         case STATE_SENDING: {
             int nodeId = _step + 1;
             if (nodeId <= 20) {
-                if (_pollMgr->isWhitelisted(nodeId)) {
+                if (_nodeMgr->isWhitelisted(nodeId)) {
                     // 彻底移除 switch(_pendingAction)，统一读取 _curConfig
                     bool sent = _rs485->asyncWrite(nodeId, _curConfig.regAddr, _curConfig.regVal, 
                         [this](Modbus::ResultCode res, uint16_t tid, void* data) {

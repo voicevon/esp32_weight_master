@@ -15,8 +15,8 @@ class NodeManager;
  */
 class AppSequentialCtrl : public IApp {
 public:
-    AppSequentialCtrl(SystemContext* ctx, ModbusMaster* rs485, NodeManager* pollMgr, SemaphoreHandle_t mutex)
-        : _ctx(ctx), _rs485(rs485), _pollMgr(pollMgr), _mutex(mutex) {}
+    AppSequentialCtrl(SystemContext* ctx, ModbusMaster* rs485, NodeManager* nodeMgr, SemaphoreHandle_t mutex)
+        : _ctx(ctx), _rs485(rs485), _nodeMgr(nodeMgr), _mutex(mutex) {}
 
     void onEnter() override;
     void onLoop() override;
@@ -43,7 +43,7 @@ private:
     
     SystemContext*    _ctx;
     ModbusMaster*     _rs485;
-    NodeManager*      _pollMgr;
+    NodeManager*      _nodeMgr;
     SemaphoreHandle_t _mutex;
 
     Action             _pendingAction = ACT_NONE;

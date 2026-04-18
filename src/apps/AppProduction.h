@@ -19,7 +19,7 @@ class WeightNode;
  */
 class AppProduction : public IApp {
 public:
-    AppProduction(SystemContext* ctx, NodeManager* pollMgr, ModbusMaster* rs485,
+    AppProduction(SystemContext* ctx, NodeManager* nodeMgr, ModbusMaster* rs485,
                   CombinationEngine* engine, Belt* b1, Belt* b2,
                   SemaphoreHandle_t mutex);
 
@@ -34,7 +34,7 @@ public:
 
 private:
     SystemContext*      _ctx;
-    NodeManager*        _pollMgr;
+    NodeManager*        _nodeMgr;
     ModbusMaster*       _rs485;
     CombinationEngine*  _engine;
     Belt*               _b1;

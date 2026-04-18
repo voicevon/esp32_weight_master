@@ -10,10 +10,10 @@
 
 #define BELT2_AUTO_STOP_MS            5000  // 二级带自主停机超时 (5秒)
 
-AppProduction::AppProduction(SystemContext* ctx, NodeManager* pollMgr, ModbusMaster* rs485,
+AppProduction::AppProduction(SystemContext* ctx, NodeManager* nodeMgr, ModbusMaster* rs485,
                              CombinationEngine* engine, Belt* b1, Belt* b2,
                              SemaphoreHandle_t mutex)
-    : _ctx(ctx), _pollMgr(pollMgr), _rs485(rs485), _engine(engine), _b1(b1), _b2(b2), _mutex(mutex)
+    : _ctx(ctx), _nodeMgr(nodeMgr), _rs485(rs485), _engine(engine), _b1(b1), _b2(b2), _mutex(mutex)
 {
 }
 
@@ -93,14 +93,14 @@ void AppProduction::handleReadyState(unsigned long now) {
 
     // 1. 预检查：仅在稳定总重可能达标时才启动昂贵的引擎计算 (优化项)
     float stableSum = 0;
-    std::vector<WeightNode*> activeNodes;
+    std::vector<WeightNode*> stableNodes;
 
     for (int id = 1; id <= 20; id++) {
-        WeightNode* node = _pollMgr->getNode(id);
+        WeightNode* node = _nodeMgr->getNode(id);
         if (node && node->isOnline() && node->isStable() && node->isWhitelisted()) {
             float w = node->getWeight();
             stableSum += w;
-            activeNodes.push_back(node);
+            stableNodes.push_back(node);
         }
     }
 
@@ -108,18 +108,25 @@ void AppProduction::handleReadyState(unsigned long now) {
 
     // 2. 调用算法引擎
     _engine->setTargetRange(currentMin, currentMax);
-    CombinationResult res = _engine->findBestCombination(activeNodes);
+    CombinationResult res = _engine->findBestCombination(stableNodes);
     
     if (!res.success) {
-        updateUIState(SYS_READY, 0, 0, false); // 寻解失败
+        // 寻解失败时不清除上一次的 idMask 和快照，实现“锁定显示”
+        updateUIState(SYS_READY, _ctx->prog.idMask, 0, false); 
         return;
     }
 
     // 3. 准备下料数据并切入下料状态
     _selectedNodes = res.selectedNodes;
+
+    // 清理并更新重量快照块
+    memset(_ctx->prog.lastBatchWeights, 0, sizeof(_ctx->prog.lastBatchWeights));
+    
     uint32_t mask = 0;
     for (auto* node : _selectedNodes) {
-        mask |= (1 << (node->getId() - 1));
+        int id = node->getId();
+        mask |= (1 << (id - 1));
+        _ctx->prog.lastBatchWeights[id] = node->getWeight(); // 捕获瞬间重量用于锁定显示
         node->invalidate(); // 立即作废数据，防止重复拾取
     }
     
@@ -145,12 +152,13 @@ void AppProduction::handleDropState(unsigned long now) {
             Serial.printf("[AppProduction] Sending OPEN to Node %d...\n", node->getId());
         }
         
-        // 挂起状态检查：如果重试多次仍失败，通知用户并跳过（或根据需要处理）
+        // 挂起状态检查：如果重试多次仍失败，通知用户并在运行时拉黑该节点
         if (node->getRetryCount() >= 3) {
             char failMsg[32];
             snprintf(failMsg, sizeof(failMsg), "节点 %d 开启失败", node->getId());
             strncpy(_ctx->prog.statusText, failMsg, 32);
-            Serial.printf("[AppProduction] CRITICAL: Node %d failed to open after 3 retries.\n", node->getId());
+            Serial.printf("[AppProduction] CRITICAL: Node %d failed to open after 3 retries. Blacklisting.\n", node->getId());
+            node->setHealthy(false); // 运行时拉黑
             _dischargeIndex++; // 跳过该错误节点
         }
     } 
@@ -171,6 +179,12 @@ void AppProduction::handleCloseState(unsigned long now) {
 
         if (node->asyncCloseServo()) {
             Serial.printf("[AppProduction] Sending CLOSE to Node %d...\n", node->getId());
+        }
+
+        if (node->getRetryCount() >= 3) {
+            Serial.printf("[AppProduction] CRITICAL: Node %d failed to close. Blacklisting.\n", node->getId());
+            node->setHealthy(false);
+            _dischargeIndex++;
         }
     } else {
         // 所有舵机关闭完成后，启动皮带运行
@@ -261,10 +275,10 @@ void AppProduction::handlePolling() {
     uint8_t nextId = _currentPollId;
     for (int i = 0; i < 20; i++) {
         nextId = (nextId % 20) + 1;
-        if (_pollMgr->isWhitelisted(nextId)) break;
+        if (_nodeMgr->isWhitelisted(nextId)) break;
     }
     
-    if (_pollMgr->asyncUpdateNode(nextId)) {
+    if (_nodeMgr->asyncUpdateNode(nextId)) {
         _currentPollId = nextId;
     }
 }

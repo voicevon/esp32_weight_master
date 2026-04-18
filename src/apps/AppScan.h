@@ -15,8 +15,8 @@
  */
 class AppScan : public IApp {
 public:
-    AppScan(SystemContext* ctx, NodeManager* pollMgr, ModbusMaster* rs485, SemaphoreHandle_t mutex)
-        : _ctx(ctx), _pollMgr(pollMgr), _rs485(rs485), _mutex(mutex) {}
+    AppScan(SystemContext* ctx, NodeManager* nodeMgr, ModbusMaster* rs485, SemaphoreHandle_t mutex)
+        : _ctx(ctx), _nodeMgr(nodeMgr), _rs485(rs485), _mutex(mutex) {}
 
     void onEnter() override;
     void onLoop() override;
@@ -37,7 +37,7 @@ public:
 
 private:
     SystemContext*    _ctx;
-    NodeManager*      _pollMgr;
+    NodeManager*      _nodeMgr;
     ModbusMaster*     _rs485;
     SemaphoreHandle_t _mutex;
 

@@ -226,19 +226,20 @@ void ModbusMaster::modbusTask(void* param) {
                             for (int i = 0; i < byteCount / 2; i++) {
                                 dest[i] = (instance->_rxBuf[3 + i * 2] << 8) | instance->_rxBuf[4 + i * 2];
                             }
-                            instance->_status = ST_SUCCESS;
                             if (instance->_pendingCb) {
                                 cbTransaction cb = instance->_pendingCb;
                                 instance->_pendingCb = nullptr;
                                 cb(Modbus::EX_SUCCESS, instance->_lastTid, instance->_pendingData);
                             }
+                            // 核心修复：先完成回调（更新节点状态），最后再释放驱动忙标志
+                            instance->_status = ST_SUCCESS; 
                         } else if (fn == 0x06) { // 写回复 (Echo)
-                            instance->_status = ST_SUCCESS;
                             if (instance->_pendingCb) {
                                 cbTransaction cb = instance->_pendingCb;
                                 instance->_pendingCb = nullptr;
                                 cb(Modbus::EX_SUCCESS, instance->_lastTid, nullptr);
                             }
+                            instance->_status = ST_SUCCESS;
                         }
                     } else {
                         if (instance->_logLevel >= LOG_ERROR) {

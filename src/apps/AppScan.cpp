@@ -23,7 +23,7 @@ void AppScan::onLoop() {
     // 且现在驱动层已经非 WAITING，说明前一个节点的请求已由回调处理完成
     if (_lastRequestTime > 0) {
         // 记录本轮结果
-        _scanHistory[_scanCycle][_scanProgress] = _pollMgr->isOnline(_scanProgress);
+        _scanHistory[_scanCycle][_scanProgress] = _nodeMgr->isOnline(_scanProgress);
         
         // 推进 ID
         _scanProgress++;
@@ -42,10 +42,10 @@ void AppScan::onLoop() {
                         if (_scanHistory[c][i]) onlineCount++;
                     }
                     // 如果 5 次扫描中有 3 次及以上在线，则认为该节点有效
-                    _pollMgr->setWhitelisted(i, onlineCount >= 3);
+                    _nodeMgr->setWhitelisted(i, onlineCount >= 3);
                 }
 
-                _pollMgr->saveWhitelist(); // 应用后立即持久化到 NVS
+                _nodeMgr->saveWhitelist(); // 应用后立即持久化到 NVS
                 Serial.println("[AppScan] Scan results applied using 3/5 rule and saved.");
             }
         }
@@ -53,7 +53,7 @@ void AppScan::onLoop() {
     }
 
     // 下发下一个请求
-    if (_pollMgr->asyncUpdateNode(_scanProgress)) {
+    if (_nodeMgr->asyncUpdateNode(_scanProgress)) {
         _lastRequestTime = millis();
     }
 }

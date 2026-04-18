@@ -11,8 +11,8 @@
 #include "apps/AppModbusDiag.h"
 #include "apps/AppSequentialCtrl.h"
 
-AppDispatcher::AppDispatcher(SystemContext* ctx, ModbusMaster* rs485, NodeManager* pollMgr, UIManager* ui, Belt* b1, Belt* b2)
-    : _ctx(ctx), _rs485(rs485), _pollMgr(pollMgr), _ui(ui), _b1(b1), _b2(b2) {
+AppDispatcher::AppDispatcher(SystemContext* ctx, ModbusMaster* rs485, NodeManager* nodeMgr, UIManager* ui, Belt* b1, Belt* b2)
+    : _ctx(ctx), _rs485(rs485), _nodeMgr(nodeMgr), _ui(ui), _b1(b1), _b2(b2) {
     _mutexCtx = xSemaphoreCreateMutex();
 }
 
@@ -22,10 +22,10 @@ void AppDispatcher::registerApp(IApp* app) {
 
 void AppDispatcher::begin(OperationMode initialMode) {
     _ui->setCommandBus(this);
-    _pollMgr->setCommandBus(this);
+    _nodeMgr->setCommandBus(this);
 
     _rs485->begin();
-    _pollMgr->begin();
+    _nodeMgr->begin();
     
     // 初始化系统上下文
     xSemaphoreTake(_mutexCtx, portMAX_DELAY);
@@ -72,7 +72,7 @@ void AppDispatcher::cmdToggleDiagnosis(bool active) {
 
 void AppDispatcher::cmdServoTest(int id, bool open) {
     _rs485->syncWrite(id, REG_CMD_CONTROL, open ? CMD_SERVO_OPEN : CMD_SERVO_CLOSE);
-    _pollMgr->setServoState(id, open);
+    _nodeMgr->setServoState(id, open);
 }
 
 void AppDispatcher::cmdBeltTest(int beltIndex, int distanceMm) {
@@ -225,7 +225,7 @@ void AppDispatcher::uiTaskEntry(void* self) {
 void AppDispatcher::uiLoop() {
     Serial.println("[Dispatcher] UI Task Started on Core 0");
     while (true) {
-        _pollMgr->fillUISnapshot(_ctx->ui);
+        _nodeMgr->fillUISnapshot(_ctx->ui);
         
         if (_currentApp) {
             _ctx->ui.isTareRunning = _currentApp->hasUIProgress();
@@ -253,6 +253,7 @@ void AppDispatcher::uiLoop() {
         }
         
         _ctx->ui.lastCalcSuccess = _ctx->prog.lastCalcSuccess;
+        memcpy(_ctx->ui.lastBatchWeights, _ctx->prog.lastBatchWeights, sizeof(_ctx->ui.lastBatchWeights));
 
         _ui->updateDashboard(_ctx);
         

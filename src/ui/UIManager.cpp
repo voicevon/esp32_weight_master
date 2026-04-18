@@ -923,9 +923,10 @@ void UIManager::updateDashboard(const SystemContext* ctx) {
         bool maskChanged   = (_isFirstUpdate || (selectionMask & (1 << (i-1))) != (lastMask & (1 << (i-1))));
         bool successChanged = (_isFirstUpdate || ctx->prog.lastCalcSuccess != _lastSnapshot.lastCalcSuccess); // 应该包含在 snapshot 或者直接从 prog 读
 
-        if (weightChanged) {
-            float weight = ctx->ui.currentWeights[i];
-            lv_bar_set_value(node_bars[i], (int)weight, LV_ANIM_OFF);
+        if (weightChanged || maskChanged || _isFirstUpdate) {
+            float weight = (selectionMask & (1 << (i-1))) ? ctx->ui.lastBatchWeights[i] : ctx->ui.currentWeights[i];
+            
+            lv_bar_set_value(node_bars[i], (int)ctx->ui.currentWeights[i], LV_ANIM_OFF);
             snprintf(buf, sizeof(buf), "%.0f", weight);
             lv_label_set_text(node_weight_labels[i], buf);
         }
@@ -937,11 +938,12 @@ void UIManager::updateDashboard(const SystemContext* ctx) {
 
         if (stableChanged || maskChanged || onlineChanged || successChanged || _isFirstUpdate) {
             uint32_t color = 0x475569; // 默认灰色
+            bool isSelected = (selectionMask & (1 << (i - 1)));
             
             if (!ctx->ui.onlineNodes[i]) {
                 color = 0x334155; // 深蓝灰：离线/非工作
-            } else if (selectionMask & (1 << (i - 1))) {
-                color = 0x22D3EE; // 青色 (Cyan 400)：正在下料 (由用户要求替换亮绿)
+            } else if (isSelected) {
+                color = 0x2563EB; // 纯蓝色 (Blue 600)：下料选中且锁定
             } else if (ctx->ui.stableNodes[i]) {
                 color = 0x10B981; // 翠绿色：稳定
             } else {
@@ -950,6 +952,13 @@ void UIManager::updateDashboard(const SystemContext* ctx) {
 
             lv_obj_set_style_bg_color(node_bars[i], lv_color_hex(color), LV_PART_INDICATOR);
             lv_obj_set_style_text_color(node_weight_labels[i], lv_color_hex(color), 0);
+            
+            // 位置调整：选中时显示在顶部，非选中显示在底部
+            if (isSelected) {
+                lv_obj_align(node_weight_labels[i], LV_ALIGN_TOP_MID, 0, -22); 
+            } else {
+                lv_obj_align(node_weight_labels[i], LV_ALIGN_TOP_MID, 0, 190);
+            }
         }
     }
     lastMask = selectionMask;
