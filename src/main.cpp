@@ -11,7 +11,7 @@
 #include "drivers/Belt.h"
 
 // Apps
-#include "apps/AppDispatcher.h"
+#include "system/SystemKernel.h"
 #include "apps/AppProduction.h"
 #include "apps/AppScan.h"
 #include "apps/AppSequentialCtrl.h"
@@ -32,8 +32,8 @@ CombinationEngine  engine(290.0f, 310.0f);
 Belt               beltPrimary(&rs485, MOTOR_ID_BELT1, MODE_POSITION, 800);
 Belt               beltSecondary(&rs485, MOTOR_ID_BELT2, MODE_SPEED, 400);
 
-// --- 核心调度器 ---
-AppDispatcher      dispatcher(&sysCtx, &rs485, &nodeManager, &ui, &beltPrimary, &beltSecondary);
+// --- 核心调度器 (系统内核) ---
+SystemKernel      kernel(&sysCtx, &rs485, &nodeManager, &ui, &beltPrimary, &beltSecondary);
 
 // --- 互斥锁 (共享状态同步) ---
 SemaphoreHandle_t  mutexCtx;
@@ -69,14 +69,14 @@ void setup() {
     appModbusDiag = AppModbusDiag(&sysCtx, &rs485); // 分配给调度器
 
     // 注册应用
-    dispatcher.registerApp(&appProduction);
-    dispatcher.registerApp(&appScan);
-    dispatcher.registerApp(&appSeqCtrl);
-    dispatcher.registerApp(&appBeltDiag);
-    dispatcher.registerApp(&appModbusDiag);
+    kernel.registerApp(&appProduction);
+    kernel.registerApp(&appScan);
+    kernel.registerApp(&appSeqCtrl);
+    kernel.registerApp(&appBeltDiag);
+    kernel.registerApp(&appModbusDiag);
 
     // 启动调度器 (内部会启动双核任务)
-    dispatcher.begin(MODE_PRODUCTION); 
+    kernel.begin(MODE_PRODUCTION); 
 }
 
 void loop() {
