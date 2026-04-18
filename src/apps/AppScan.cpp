@@ -33,7 +33,12 @@ void AppScan::onLoop() {
     // 且现在驱动层已经非 WAITING，说明前一个节点的请求已由回调处理完成
     if (_lastRequestTime > 0) {
         // 记录本轮结果
-        _scanHistory[_scanCycle][_scanProgress] = _nodeMgr->isOnline(_scanProgress);
+        bool online = _nodeMgr->isOnline(_scanProgress);
+        _scanHistory[_scanCycle][_scanProgress] = online;
+        
+        Serial.printf("[AppScan][Cycle %d] Node %d result: %s (Time: %lu ms)\n", 
+                      _scanCycle, _scanProgress, online ? "ONLINE" : "OFFLINE", 
+                      millis() - _lastRequestTime);
         
         // 推进 ID
         _scanProgress++;
@@ -45,24 +50,30 @@ void AppScan::onLoop() {
             if (_scanCycle >= 5) {
                 _isFinished = true;
                 
-                // [修复] 应用 3/5 多数表决原则生成白名单
+                Serial.println("[AppScan] --- Final Scan Results (Majority 3/5 Rule) ---");
                 for (int i = 1; i <= 20; i++) {
                     int onlineCount = 0;
                     for (int c = 0; c < 5; c++) {
                         if (_scanHistory[c][i]) onlineCount++;
                     }
-                    // 如果 5 次扫描中有 3 次及以上在线，则认为该节点有效
-                    _nodeMgr->setWhitelisted(i, onlineCount >= 3);
+                    bool whitelisted = (onlineCount >= 3);
+                    _nodeMgr->setWhitelisted(i, whitelisted);
+                    
+                    if (whitelisted || onlineCount > 0) {
+                        Serial.printf("[AppScan] Node %2d: %d/5 Online -> %s\n", 
+                                      i, onlineCount, whitelisted ? "WHITELISTED" : "REJECTED");
+                    }
                 }
 
                 _nodeMgr->saveWhitelist(); // 应用后立即持久化到 NVS
-                _ctx->prog.dirtyFlags |= DF_NODE_DATA; // 节点白名单数据发生变更
-                Serial.println("[AppScan] Scan results applied using 3/5 rule and saved.");
+                _ctx->prog.dirtyFlags |= DF_NODE_DATA; 
+                Serial.println("[AppScan] Scan results applied and saved.");
             }
         }
         _ctx->prog.dirtyFlags |= DF_PROGRESS; // 扫描进度变更
         return;
     }
+
 
     // 下发下一个请求
     if (_nodeMgr->asyncUpdateNode(_scanProgress)) {

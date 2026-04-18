@@ -3,6 +3,7 @@
 
 #include "apps/IApp.h"
 #include "system/SystemContext.h"
+#include "logic/StepSequencer.h"
 #include <vector>
 #include <Preferences.h>
 
@@ -31,6 +32,7 @@ public:
 
     // 生产参数管理 (从 AppController 迁移)
     void updateTargets(float dMin, float dMax);
+    void triggerGlobalTare();
 
 private:
     SystemContext*      _ctx;
@@ -64,6 +66,8 @@ private:
     void updateUIState(SystemStatus status, uint32_t mask = 0, float weight = 0.0f, bool success = true);
     void loadParams();
     void saveParams();
+
+    StepSequencer _sequencer;
 };
 
 #endif // APP_PRODUCTION_H

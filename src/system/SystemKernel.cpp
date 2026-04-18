@@ -9,7 +9,7 @@
 #include "apps/AppServoTest.h"
 #include "apps/AppBeltDiag.h"
 #include "apps/AppModbusDiag.h"
-#include "apps/AppSequentialCtrl.h"
+#include "apps/AppModbusDiag.h"
 
 SystemKernel::SystemKernel(SystemContext* ctx, ModbusMaster* rs485, NodeManager* nodeMgr, UIManager* ui, Belt* b1, Belt* b2)
     : _ctx(ctx), _rs485(rs485), _nodeMgr(nodeMgr), _ui(ui), _b1(b1), _b2(b2) {
@@ -47,18 +47,16 @@ void SystemKernel::begin(OperationMode initialMode) {
 // =============================================================================
 
 void SystemKernel::cmdGlobalTare() {
-    auto app = findApp(MODE_SEQUENTIAL_CTRL);
+    auto app = findApp(MODE_PRODUCTION);
     if (app) {
-        static_cast<AppSequentialCtrl*>(app)->triggerGlobalTare();
-        updateOperationMode(MODE_SEQUENTIAL_CTRL);
+        static_cast<AppProduction*>(app)->triggerGlobalTare();
     }
 }
 
 void SystemKernel::cmdGlobalServo(bool open) {
-    auto app = findApp(MODE_SEQUENTIAL_CTRL);
+    auto app = findApp(MODE_SERVO_TEST);
     if (app) {
-        static_cast<AppSequentialCtrl*>(app)->triggerGlobalServo(open);
-        updateOperationMode(MODE_SEQUENTIAL_CTRL);
+        static_cast<AppServoTest*>(app)->triggerGlobalServo(open);
     }
 }
 
@@ -253,18 +251,7 @@ void SystemKernel::uiLoop() {
             }
             _ctx->ui.tareProgress = _currentApp->getUIProgress();
 
-            // 专门处理扫描数据的同步 (从 App 层拉取到 UI 快照层)
-            if (_currentMode == MODE_DIAG_SCAN) {
-                AppScan* scanApp = static_cast<AppScan*>(_currentApp);
-                _ctx->ui.scanCycle = scanApp->getScanCycle();
-                _ctx->ui.scanProgress = scanApp->getScanProgress();
-                for (int c = 0; c < 5; c++) {
-                    for (int i = 1; i <= 20; i++) {
-                        _ctx->ui.scanResults[c][i] = scanApp->getScanResult(c, i);
-                    }
-                }
-                _ctx->ui.dirtyFlags |= DF_PROGRESS;
-            } else if (_currentMode == MODE_BELT_DIAG) {
+            if (_currentMode == MODE_BELT_DIAG) {
                 _ctx->ui.beltDiagScanning = static_cast<AppBeltDiag*>(_currentApp)->isScanning();
                 _ctx->ui.beltStatus[0] = static_cast<AppBeltDiag*>(_currentApp)->getBeltStatus(0);
                 _ctx->ui.beltStatus[1] = static_cast<AppBeltDiag*>(_currentApp)->getBeltStatus(1);
@@ -273,12 +260,26 @@ void SystemKernel::uiLoop() {
                 _ctx->ui.diagSubMode = diag->getSubMode();
                 _ctx->ui.diagTargetNodeId = diag->getTargetId();
                 
-                // 核心修复：同步逻辑层生成的诊断数据到 UI 快照
                 _ctx->ui.serialAutoSend = _ctx->prog.diagAutoSend;
                 _ctx->ui.serialLogTick  = _ctx->prog.diagLogTick;
                 strncpy(_ctx->ui.serialLogLine, _ctx->prog.diagLogLine, sizeof(_ctx->ui.serialLogLine));
             }
         }
+
+        // --- [核心修复] 全局扫描快照同步 (不受 currentMode 阻塞) ---
+        // 即使模式切换了，只要 App 实例还在内存中，我们就最后一次同步数据，避免最后几个节点变红
+        IApp* scanAppPtr = findApp(MODE_DIAG_SCAN);
+        if (scanAppPtr) {
+            AppScan* scanApp = static_cast<AppScan*>(scanAppPtr);
+            _ctx->ui.scanCycle = scanApp->getScanCycle();
+            _ctx->ui.scanProgress = scanApp->getScanProgress();
+            for (int c = 0; c < 5; c++) {
+                for (int i = 1; i <= 20; i++) {
+                    _ctx->ui.scanResults[c][i] = scanApp->getScanResult(c, i);
+                }
+            }
+        }
+
         
         _ctx->ui.lastCalcSuccess = _ctx->prog.lastCalcSuccess;
         memcpy(_ctx->ui.lastBatchWeights, _ctx->prog.lastBatchWeights, sizeof(_ctx->ui.lastBatchWeights));
@@ -306,7 +307,6 @@ const char* SystemKernel::modeToStr(OperationMode m) {
         case MODE_DIAG_SCAN:       return "DIAG_SCAN";
         case MODE_DIAG_DETAIL:     return "DIAG_DETAIL";
         case MODE_CONFIGURATION:   return "CONFIGURATION";
-        case MODE_SEQUENTIAL_CTRL: return "SEQUENTIAL_CTRL";
         case MODE_SERVO_TEST:      return "SERVO_TEST";
         case MODE_BELT_DIAG:       return "BELT_DIAG";
         case MODE_MODBUS_DIAG:     return "MODBUS_DIAG";

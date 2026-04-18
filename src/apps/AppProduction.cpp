@@ -13,7 +13,8 @@
 AppProduction::AppProduction(SystemContext* ctx, NodeManager* nodeMgr, ModbusMaster* rs485,
                              CombinationEngine* engine, Belt* b1, Belt* b2,
                              SemaphoreHandle_t mutex)
-    : _ctx(ctx), _nodeMgr(nodeMgr), _rs485(rs485), _engine(engine), _b1(b1), _b2(b2), _mutex(mutex)
+    : _ctx(ctx), _nodeMgr(nodeMgr), _rs485(rs485), _engine(engine), _b1(b1), _b2(b2), _mutex(mutex),
+      _sequencer(ctx, rs485, nodeMgr)
 {
 }
 
@@ -31,6 +32,9 @@ void AppProduction::onEnter() {
 void AppProduction::onLoop() {
     unsigned long now = millis();
     SystemStatus currentStatus;
+
+    // 驱动指令序列 (置零等)
+    _sequencer.update(now);
 
     // 同步获取当前业务状态
     xSemaphoreTake(_mutex, portMAX_DELAY);
@@ -275,6 +279,8 @@ void AppProduction::updateUIState(SystemStatus status, uint32_t mask, float weig
 
 
 void AppProduction::handlePolling() {
+    if (_sequencer.isBusy()) return; // 序列执行期间强制挂起常规轮询
+
     uint8_t nextId = _currentPollId;
     for (int i = 0; i < 20; i++) {
         nextId = (nextId % 20) + 1;
@@ -288,6 +294,7 @@ void AppProduction::handlePolling() {
 
 void AppProduction::onExit() {
     Serial.println("[AppProduction] Production Mode Exited.");
+    _sequencer.stop();
 }
 
 void AppProduction::updateTargets(float deltaBase, float deltaOffset) {
@@ -325,3 +332,11 @@ void AppProduction::saveParams() {
     _nvs.putFloat("accu", _ctx->config.accumulatedWeight);
     _nvs.end();
 }
+
+void AppProduction::triggerGlobalTare() {
+    // 启动 1-20 节点的置零序列 (CMD_TARE = 0x01)
+    _sequencer.start(REG_CMD_CONTROL, CMD_TARE, 0, 0); // 0 为置零 UI 码
+    strncpy(_ctx->prog.statusText, "正在执行全局置零...", 32);
+    _ctx->prog.dirtyFlags |= DF_SYS_STATUS;
+}
+

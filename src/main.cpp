@@ -14,7 +14,7 @@
 #include "system/SystemKernel.h"
 #include "apps/AppProduction.h"
 #include "apps/AppScan.h"
-#include "apps/AppSequentialCtrl.h"
+#include "apps/AppServoTest.h"
 #include "apps/AppBeltDiag.h"
 #include "apps/AppModbusDiag.h"
 
@@ -41,7 +41,7 @@ SemaphoreHandle_t  mutexCtx;
 // --- 具体应用实例 ---
 AppProduction      appProduction(&sysCtx, &nodeManager, &rs485, &engine, &beltPrimary, &beltSecondary, nullptr);
 AppScan            appScan(&sysCtx, &nodeManager, &rs485, nullptr);
-AppSequentialCtrl  appSeqCtrl(&sysCtx, &rs485, &nodeManager, nullptr);
+AppServoTest       appServoTest(&sysCtx, &rs485, &nodeManager);  // [新] 维修模式
 AppBeltDiag        appBeltDiag(&sysCtx, &rs485, &beltPrimary, &beltSecondary, nullptr);
 AppModbusDiag      appModbusDiag(&sysCtx, &rs485);
 
@@ -64,14 +64,14 @@ void setup() {
     // 重新注入互斥锁与状态上下文
     appProduction = AppProduction(&sysCtx, &nodeManager, &rs485, &engine, &beltPrimary, &beltSecondary, mutexCtx);
     appScan       = AppScan(&sysCtx, &nodeManager, &rs485, mutexCtx);
-    appSeqCtrl    = AppSequentialCtrl(&sysCtx, &rs485, &nodeManager, mutexCtx);
+    appServoTest  = AppServoTest(&sysCtx, &rs485, &nodeManager);
     appBeltDiag   = AppBeltDiag(&sysCtx, &rs485, &beltPrimary, &beltSecondary, mutexCtx);
     appModbusDiag = AppModbusDiag(&sysCtx, &rs485); // 分配给调度器
 
     // 注册应用
     kernel.registerApp(&appProduction);
     kernel.registerApp(&appScan);
-    kernel.registerApp(&appSeqCtrl);
+    kernel.registerApp(&appServoTest);
     kernel.registerApp(&appBeltDiag);
     kernel.registerApp(&appModbusDiag);
 

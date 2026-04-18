@@ -13,7 +13,6 @@ enum OperationMode {
     MODE_DIAG_SCAN,     // 诊断：全量扫描 (独占总线)
     MODE_DIAG_DETAIL,   // 诊断：节点详情查看
     MODE_CONFIGURATION, // 配置模式
-    MODE_SEQUENTIAL_CTRL, // 序列化控制模式 (开/关/置零)
     MODE_SERVO_TEST,     // 舵机维护测试模式 (独占总线)
     MODE_BELT_DIAG,      // 皮带诊断跑距测试模式 (独占总线)
     MODE_MODBUS_DIAG,    // Modbus 诊断器模式 (独占总线)
@@ -50,7 +49,6 @@ enum UIState {
     SCREEN_RS485_DIAG,
     SCREEN_SCAN,
     SCREEN_MESSAGE,     // 短信提示界面
-    SCREEN_SEQUENTIAL_PROGRESS // 序列动作进度界面
 };
 
 /**
