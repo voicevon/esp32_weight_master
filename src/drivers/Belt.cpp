@@ -122,6 +122,9 @@ void Belt::update() {
 
     // 只有在指令成功夺取总线并发出后，才将其从队列中移除
     if (sent) {
+        if (_id == 21 || _id == 22) { // 仅跟踪皮带电机 (ID 21, 22)
+            Serial.printf("[Belt] ID:%d CMD:0x%02X REG:0x%04X Sent.\n", _id, task.isRead ? 0x03 : 0x06, task.reg);
+        }
         _taskQueue.pop_front();
     }
 }

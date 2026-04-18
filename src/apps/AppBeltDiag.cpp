@@ -28,6 +28,7 @@ void AppBeltDiag::onLoop() {
             if (_mutexCtx) xSemaphoreTake(_mutexCtx, portMAX_DELAY);
             _ctx->ui.beltStatus[0] = (int8_t)_b1->getStatus();
             _ctx->ui.beltStatus[1] = (int8_t)_b2->getStatus();
+            _ctx->prog.dirtyFlags |= DF_PROGRESS; // 必须立起标志，UI 才会刷新
             if (_mutexCtx) xSemaphoreGive(_mutexCtx);
             break;
 
@@ -59,9 +60,9 @@ void AppBeltDiag::triggerScan() {
     _stateTimer = millis();
 
     if (_mutexCtx) xSemaphoreTake(_mutexCtx, portMAX_DELAY);
-    _ctx->ui.beltDiagScanning = true;
     _ctx->ui.beltStatus[0] = 0; // 等待
     _ctx->ui.beltStatus[1] = 0; 
+    _ctx->prog.dirtyFlags |= DF_PROGRESS; // 开始扫描，立旗
     if (_mutexCtx) xSemaphoreGive(_mutexCtx);
 
     // 顺序触发两个电机的异步扫描
@@ -71,9 +72,9 @@ void AppBeltDiag::triggerScan() {
                 this->_state = DIAG_IDLE;
                 if (this->_mutexCtx) xSemaphoreTake(this->_mutexCtx, portMAX_DELAY);
                 this->_ctx->ui.beltDiagScanning = false;
-                // 扫描完成后，最后同步一次状态到 UI
                 this->_ctx->ui.beltStatus[0] = (int8_t)this->_b1->getStatus();
                 this->_ctx->ui.beltStatus[1] = (int8_t)this->_b2->getStatus();
+                this->_ctx->prog.dirtyFlags |= DF_PROGRESS; // 扫描结束，最终立旗
                 if (this->_mutexCtx) xSemaphoreGive(this->_mutexCtx);
                 Serial.println("[AppBeltDiag] Sequential Scan Finished.");
             }
