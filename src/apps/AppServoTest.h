@@ -4,6 +4,8 @@
 #include "apps/IApp.h"
 #include "system/SystemContext.h"
 #include "drivers/ModbusMaster.h"
+#include "logic/StepSequencer.h"
+#include "logic/NodeManager.h"
 
 /**
  * @class AppServoTest
@@ -12,8 +14,9 @@
  */
 class AppServoTest : public IApp {
 public:
-    AppServoTest(SystemContext* ctx, ModbusMaster* rs485);
+    AppServoTest(SystemContext* ctx, ModbusMaster* rs485, NodeManager* nodeMgr);
 
+    // IApp 接口实现
     void onEnter() override;
     void onLoop() override;
     void onExit() override;
@@ -22,10 +25,14 @@ public:
 
     // 指令接口
     void triggerServo(int id, bool open);
+    void triggerGlobalServo(bool open);
 
 private:
     SystemContext* _ctx;
     ModbusMaster*  _rs485;
+    NodeManager*   _nodeMgr;
+    StepSequencer  _sequencer;
 };
+
 
 #endif

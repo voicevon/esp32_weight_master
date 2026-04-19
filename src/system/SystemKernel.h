@@ -1,5 +1,5 @@
-#ifndef APP_DISPATCHER_H
-#define APP_DISPATCHER_H
+#ifndef SYSTEM_KERNEL_H
+#define SYSTEM_KERNEL_H
 
 #include <Arduino.h>
 #include <vector>
@@ -12,16 +12,16 @@
 
 class ModbusMaster;
 class Belt;
-class PollManager;
+class NodeManager;
 
 /**
- * @class AppDispatcher
- * @brief 系统调度器（核心内核）。
+ * @class SystemKernel
+ * @brief 系统内核（核心调度器）。
  * 负责管理所有 App 实例、FreeRTOS 任务、UI 同步以及原子模式切换。
  */
-class AppDispatcher : public ICommandBus {
+class SystemKernel : public ICommandBus {
 public:
-    AppDispatcher(SystemContext* ctx, ModbusMaster* rs485, PollManager* pollMgr, UIManager* ui, Belt* b1, Belt* b2);
+    SystemKernel(SystemContext* ctx, ModbusMaster* rs485, NodeManager* nodeMgr, UIManager* ui, Belt* b1, Belt* b2);
 
     void registerApp(IApp* app);
     void begin(OperationMode initialMode = MODE_PRODUCTION);
@@ -29,6 +29,7 @@ public:
     // ICommandBus 接口实现 (UI 交互桥梁)
     void cmdGlobalTare() override;
     void cmdStartScan() override;
+    void cmdCancelScan() override;
     void cmdToggleDiagnosis(bool active) override;
     void cmdServoTest(int id, bool open) override;
     void cmdGlobalServo(bool open) override;
@@ -52,7 +53,7 @@ private:
     // 资源
     SystemContext*        _ctx;
     ModbusMaster*         _rs485;
-    PollManager*          _pollMgr;
+    NodeManager*          _nodeMgr;
     UIManager*            _ui;
     Belt*                 _b1;
     Belt*                 _b2;
@@ -77,4 +78,4 @@ private:
     const char* modeToStr(OperationMode m);
 };
 
-#endif // APP_DISPATCHER_H
+#endif // SYSTEM_KERNEL_H

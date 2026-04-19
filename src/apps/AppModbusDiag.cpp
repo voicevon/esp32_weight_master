@@ -15,9 +15,9 @@ void AppModbusDiag::onEnter() {
     _lastSendTime = 0; // [重要] 重置时间，立即使第一次脉冲生效
     
     _ctx->ui.diagSubMode = _subMode;
-    _ctx->ui.serialAutoSend = _autoSend;
-    _ctx->ui.serialLogTick = 0;
-    memset(_ctx->ui.serialLogLine, 0, sizeof(_ctx->ui.serialLogLine));
+    _ctx->prog.diagAutoSend = _autoSend;
+    _ctx->prog.diagLogTick = 0;
+    memset(_ctx->prog.diagLogLine, 0, sizeof(_ctx->prog.diagLogLine));
     _rs485->clearRawBuffer();
     
     pushLog("SYS", "Diagnostic Terminal Ready (Pulse 1Hz Enabled)");
@@ -143,13 +143,18 @@ void AppModbusDiag::triggerSendHex(const char* hexStr) {
 void AppModbusDiag::toggleAutoSend(bool enable) {
     if (_subMode != DIAG_SUB_PULSE) return;
     _autoSend = enable;
+    _ctx->prog.diagAutoSend = enable;
+    _ctx->prog.dirtyFlags |= DF_DIAG;
     pushLog("SYS", enable ? "Pulse ON" : "Pulse OFF");
 }
 
 void AppModbusDiag::pushLog(const char* tag, const char* hex) {
-    // 1. 更新 UI 缓冲区
-    snprintf(_ctx->ui.serialLogLine, sizeof(_ctx->ui.serialLogLine), "[%s] %s", tag, hex);
-    _ctx->ui.serialLogTick++;
+    // 1. 更新逻辑层缓冲区
+    snprintf(_ctx->prog.diagLogLine, sizeof(_ctx->prog.diagLogLine), "[%s] %s", tag, hex);
+    _ctx->prog.diagLogTick++;
+    _ctx->prog.dirtyFlags |= DF_DIAG;
+
+    // 2. [核心改进] 串口镜像输出，方便排查
 
     // 2. [核心改进] 串口镜像输出，方便排查
     Serial.printf("[%s] %s\n", tag, hex);

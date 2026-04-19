@@ -13,11 +13,11 @@ enum OperationMode {
     MODE_DIAG_SCAN,     // 诊断：全量扫描 (独占总线)
     MODE_DIAG_DETAIL,   // 诊断：节点详情查看
     MODE_CONFIGURATION, // 配置模式
-    MODE_SEQUENTIAL_CTRL, // 序列化控制模式 (开/关/置零)
     MODE_SERVO_TEST,     // 舵机维护测试模式 (独占总线)
     MODE_BELT_DIAG,      // 皮带诊断跑距测试模式 (独占总线)
     MODE_MODBUS_DIAG,    // Modbus 诊断器模式 (独占总线)
-    MODE_ABOUT           // 关于界面
+    MODE_ABOUT,          // 关于界面
+    MODE_SHIFT_MANAGEMENT // 上下班管理模式 (新增)
 };
  
 /**
@@ -50,7 +50,6 @@ enum UIState {
     SCREEN_RS485_DIAG,
     SCREEN_SCAN,
     SCREEN_MESSAGE,     // 短信提示界面
-    SCREEN_SEQUENTIAL_PROGRESS // 序列动作进度界面
 };
 
 /**
@@ -78,12 +77,31 @@ enum NodeStatus {
 };
 
 /**
+ * @brief UI 同步脏标记位掩码 (Suggestion 3)
+ */
+enum DirtyFlag : uint32_t {
+    DF_NONE          = 0x00000000,
+    DF_SYS_STATUS    = 0x00000001, // 系统业务状态 (sysStatus, statusText)
+    DF_OP_MODE       = 0x00000002, // 运行模式切换 (curMode)
+    DF_PROD_RES      = 0x00000004, // 生产结果 (batchWeight, idMask, calcSuccess)
+    DF_WEIGHT_LIST   = 0x00000008, // 生产模式：历史锁定重量列表 (lastBatchWeights snapshot)
+    DF_LIVE_DATA     = 0x00000010, // 节点实时重量变化
+    DF_NODE_DATA     = 0x00000020, // 节点白名单、在线状态、舵机状态等元数据变化
+    DF_PROGRESS      = 0x00000040, // 动作进度 (isTareRunning, tareProgress, scanProgress)
+    DF_CONFIG        = 0x00000080, // NVS 参数变化 (config.targetMin/Max)
+    DF_DIAG          = 0x00000100, // [新增] 诊断信息 (serialLog, diagStatus)
+    DF_ALL           = 0xFFFFFFFF
+};
+
+/**
  * @brief 系统生产设置 (持久化参数)
  */
 struct ProductionParams {
     float targetMin;
     float targetMax;
-    float accumulatedWeight;
+    float accumulatedWeight; // 当前工作量 (可手动清零)
+    float shiftWeight;       // 单班次重量 (一键下班清零)
+    float totalWeight;       // 系统总重量 (永久累计)
     bool  isProductionEnabled;
 };
 
@@ -95,7 +113,15 @@ struct WSProductionState {
     char         statusText[32];  // 用于 UI 显示的动态文案
     float        batchWeight;     // 最近成功的组合重量
     uint32_t     idMask;          // 下料掩码
+    float        lastBatchWeights[21]; // [新增] 最近一次组合中各节点的具体重量快照
     bool         lastCalcSuccess; // 上次寻解是否成功
+    
+    // 诊断层影子变量 (逻辑层更新，同步到 UI)
+    bool         diagAutoSend;     
+    char         diagLogLine[128]; 
+    uint32_t     diagLogTick;      
+
+    uint32_t     dirtyFlags;      // [新增] 脏标记位掩码
 };
 
 
@@ -115,6 +141,8 @@ struct UISnapshot {
     // 序列控制进度 (用于 UI 锁定与反馈)
     bool          isTareRunning;      // 是否正在执行全局置零
     int           tareProgress;       // 置零进度 (0-100)
+    int           activeSeqNode;      // 当前正在执行动作的节点 ID (0 表示无)
+    int           activeSeqAction;    // 1: 开启, 2: 关闭, 0: 无
 
     // 扫描与诊断同步 (由 PollManager 填充)
     int           scanProgress;
@@ -139,6 +167,8 @@ struct UISnapshot {
     char          serialLogLine[128]; // 最近生成的一行日志 (用于 Append)
     uint32_t      serialLogTick;      // 日志更新序列号
     bool          lastCalcSuccess;    // 生产模式：上次寻解是否成功
+    float         lastBatchWeights[21]; // [新增] 最近一次组合中各节点的具体重量快照
+    uint32_t      dirtyFlags;           // [新增] 脏标记位掩码
 };
 
 #endif

@@ -35,12 +35,22 @@ private:
     
     // --- Tabs ---
     lv_obj_t* tabview = nullptr;
+    lv_obj_t* shift_tab = nullptr;
     lv_obj_t* dashboard_tab = nullptr;
     lv_obj_t* admin_tab = nullptr;
     lv_obj_t* about_tab = nullptr;
 
     // --- About Section ---
     void buildAboutView(lv_obj_t* parent);
+
+    // --- Shift Section ---
+    void buildShiftView(lv_obj_t* parent);
+    lv_obj_t* shift_btn_in = nullptr;
+    lv_obj_t* shift_btn_out = nullptr;
+    lv_obj_t* shift_total_weight_label = nullptr;
+    lv_obj_t* shift_shift_weight_label = nullptr;
+    lv_obj_t* shift_work_weight_label = nullptr;
+    lv_obj_t* shift_status_label = nullptr;
 
     // --- Components ---
     lv_obj_t* status_label = nullptr;
@@ -51,6 +61,7 @@ private:
     lv_obj_t* label_grand_total = nullptr;
     lv_obj_t* label_last_batch_prefix = nullptr;
     lv_obj_t* label_last_batch_val = nullptr;
+    lv_obj_t* label_last_batch_ids = nullptr;
     lv_obj_t* node_bars[21];
     lv_obj_t* node_weight_labels[21];
     
@@ -59,6 +70,7 @@ private:
     lv_obj_t* scan_progress_label = nullptr;
     lv_obj_t* scan_blocks[5][21]; // [cycle][id]
     lv_obj_t* scan_confirm_btn = nullptr;
+    lv_obj_t* scan_cancel_btn = nullptr;
     lv_obj_t* servo_btns[21];    // 核心 UI 引用
     lv_obj_t* target_sheet = nullptr;
     lv_obj_t* target_sheet_bg = nullptr;

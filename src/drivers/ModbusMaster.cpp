@@ -107,6 +107,7 @@ bool ModbusMaster::asyncRead(uint8_t id, uint16_t addr, uint16_t count, cbTransa
     _txBuf[5] = count & 0xFF;
     
     while(Serial1.available()) Serial1.read(); // 清空缓冲区
+    vTaskDelay(pdMS_TO_TICKS(5)); // --- 核心修复：强制总线空闲间隔，防止与从机方向切换冲突 ---
     sendPacket(_txBuf, 6);
     
     if (_logLevel >= LOG_VERBOSE) {
@@ -138,6 +139,7 @@ bool ModbusMaster::asyncWrite(uint8_t id, uint16_t addr, uint16_t value, cbTrans
     _txBuf[5] = value & 0xFF;
     
     while(Serial1.available()) Serial1.read();
+    vTaskDelay(pdMS_TO_TICKS(5)); // --- 核心修复：强制总线空闲间隔 ---
     sendPacket(_txBuf, 6);
     
     if (_logLevel >= LOG_VERBOSE) {
@@ -226,18 +228,40 @@ void ModbusMaster::modbusTask(void* param) {
                             for (int i = 0; i < byteCount / 2; i++) {
                                 dest[i] = (instance->_rxBuf[3 + i * 2] << 8) | instance->_rxBuf[4 + i * 2];
                             }
-                            instance->_status = ST_SUCCESS;
                             if (instance->_pendingCb) {
                                 cbTransaction cb = instance->_pendingCb;
                                 instance->_pendingCb = nullptr;
                                 cb(Modbus::EX_SUCCESS, instance->_lastTid, instance->_pendingData);
                             }
+                            // 核心修复：先完成回调（更新节点状态），最后再释放驱动忙标志
+                            instance->_status = ST_SUCCESS; 
                         } else if (fn == 0x06) { // 写回复 (Echo)
-                            instance->_status = ST_SUCCESS;
                             if (instance->_pendingCb) {
                                 cbTransaction cb = instance->_pendingCb;
                                 instance->_pendingCb = nullptr;
                                 cb(Modbus::EX_SUCCESS, instance->_lastTid, nullptr);
+                            }
+                            instance->_status = ST_SUCCESS;
+                        } else if ((fn & 0x80) != 0) { // 异常回复码 (如 0x83, 0x86)
+                            if (instance->_logLevel >= LOG_ERROR) {
+                                Serial.printf("[ModbusMaster] EXCEPTION from ID:%d FN:0x%02X Code:0x%02X\n", instance->_rxBuf[0], fn, instance->_rxBuf[2]);
+                            }
+                            instance->_status = ST_ERROR;
+                            if (instance->_pendingCb) {
+                                cbTransaction cb = instance->_pendingCb;
+                                instance->_pendingCb = nullptr;
+                                cb(Modbus::EX_ERROR, instance->_lastTid, nullptr);
+                            }
+                        } else {
+                            // 收到未被支持的功能码回复
+                            if (instance->_logLevel >= LOG_ERROR) {
+                                Serial.printf("[ModbusMaster] UNHANDLED FN:0x%02X from ID:%d\n", fn, instance->_rxBuf[0]);
+                            }
+                            instance->_status = ST_ERROR;
+                            if (instance->_pendingCb) {
+                                cbTransaction cb = instance->_pendingCb;
+                                instance->_pendingCb = nullptr;
+                                cb(Modbus::EX_ERROR, instance->_lastTid, nullptr);
                             }
                         }
                     } else {

@@ -2,24 +2,31 @@
 #include <Arduino.h>
 #include "system/SystemConfig.h"
 #include "system/SystemContext.h"
-#include "logic/PollManager.h"
+#include "logic/NodeManager.h"
+#include "logic/WeightNode.h"
 #include "drivers/ModbusMaster.h"
 #include "logic/CombinationEngine.h"
 #include "drivers/Belt.h"
+#include <algorithm>
 
 #define BELT2_AUTO_STOP_MS            5000  // 二级带自主停机超时 (5秒)
 
-AppProduction::AppProduction(SystemContext* ctx, PollManager* pollMgr, ModbusMaster* rs485,
+AppProduction::AppProduction(SystemContext* ctx, NodeManager* nodeMgr, ModbusMaster* rs485,
                              CombinationEngine* engine, Belt* b1, Belt* b2,
                              SemaphoreHandle_t mutex)
-    : _ctx(ctx), _pollMgr(pollMgr), _rs485(rs485), _engine(engine), _b1(b1), _b2(b2), _mutex(mutex)
+    : _ctx(ctx), _nodeMgr(nodeMgr), _rs485(rs485), _engine(engine), _b1(b1), _b2(b2), _mutex(mutex),
+      _sequencer(ctx, rs485, nodeMgr)
 {
 }
 
 void AppProduction::onEnter() {
+    xSemaphoreTake(_mutex, portMAX_DELAY);
     loadParams();
+    _ctx->prog.dirtyFlags |= DF_CONFIG; // 关键修复：确保加载的 NVS 参数能立即同步到 UI
+    xSemaphoreGive(_mutex);
+
     _dischargeIndex = 0;
-    _selectedIds.clear();
+    _selectedNodes.clear();
     _stateStartTime = millis();
     _belt2StartTime = 0;
     _belt2Running = false;
@@ -30,6 +37,9 @@ void AppProduction::onEnter() {
 void AppProduction::onLoop() {
     unsigned long now = millis();
     SystemStatus currentStatus;
+
+    // 驱动指令序列 (置零等)
+    _sequencer.update(now);
 
     // 同步获取当前业务状态
     xSemaphoreTake(_mutex, portMAX_DELAY);
@@ -92,15 +102,14 @@ void AppProduction::handleReadyState(unsigned long now) {
 
     // 1. 预检查：仅在稳定总重可能达标时才启动昂贵的引擎计算 (优化项)
     float stableSum = 0;
-    std::vector<float> activeWeights;
-    std::vector<int>   activeIds;
+    std::vector<WeightNode*> stableNodes;
 
     for (int id = 1; id <= 20; id++) {
-        if (_pollMgr->isOnline(id) && _pollMgr->isStable(id) && _pollMgr->isWhitelisted(id)) {
-            float w = _pollMgr->getWeight(id);
+        WeightNode* node = _nodeMgr->getNode(id);
+        if (node && node->isOnline() && node->isStable() && node->isWhitelisted()) {
+            float w = node->getWeight();
             stableSum += w;
-            activeWeights.push_back(w);
-            activeIds.push_back(id);
+            stableNodes.push_back(node);
         }
     }
 
@@ -108,57 +117,103 @@ void AppProduction::handleReadyState(unsigned long now) {
 
     // 2. 调用算法引擎
     _engine->setTargetRange(currentMin, currentMax);
-    CombinationResult res = _engine->findBestCombination(activeWeights);
+    CombinationResult res = _engine->findBestCombination(stableNodes);
     
     if (!res.success) {
-        updateUIState(SYS_READY, 0, 0, false); // 寻解失败
+        // 寻解失败时不清除上一次的 idMask 和快照，实现“锁定显示”
+        updateUIState(SYS_READY, _ctx->prog.idMask, 0, false); 
+
+        static unsigned long lastFailLogTime = 0;
+        if (now - lastFailLogTime > 2000) { // 限制每2秒最多打印一次失败详情，防止刷屏
+            lastFailLogTime = now;
+            std::sort(stableNodes.begin(), stableNodes.end(), [](WeightNode* a, WeightNode* b) {
+                return a->getWeight() > b->getWeight(); // 从大到小降序排列
+            });
+            
+            Serial.printf("\n[AppProduction] COMBINATION FAILED! Target Range: %.0f - %.0f g\n", currentMin, currentMax);
+            Serial.printf("[AppProduction] Currently Available Stable Nodes (%d total):\n", stableNodes.size());
+            for (auto* n : stableNodes) {
+                Serial.printf("  - Node %2d : %.1f g\n", n->getId(), n->getWeight());
+            }
+            Serial.println("[AppProduction] -------------------");
+        }
         return;
     }
 
     // 3. 准备下料数据并切入下料状态
-    _selectedIds.clear();
+    _selectedNodes = res.selectedNodes;
+
+    // 清理并更新重量快照块
+    memset(_ctx->prog.lastBatchWeights, 0, sizeof(_ctx->prog.lastBatchWeights));
+    
     uint32_t mask = 0;
-    for (int idx : res.selectedIndices) {
-        int physId = activeIds[idx];
-        _selectedIds.push_back(physId);
-        mask |= (1 << (physId - 1));
-        _pollMgr->invalidateNode(physId); // 立即作废数据，防止重复拾取
+    for (auto* node : _selectedNodes) {
+        int id = node->getId();
+        mask |= (1 << (id - 1));
+        _ctx->prog.lastBatchWeights[id] = node->getWeight(); // 捕获瞬间重量用于锁定显示
+        node->invalidate(); // 立即作废数据，防止重复拾取
     }
     
     _dischargeIndex = 0;
     _lastCombinedWeight = res.totalWeight;
-    _stateStartTime = now; // 记录序列开启的起始时刻 (重要)
+    _stateStartTime = now;
+    _ctx->prog.dirtyFlags |= (DF_PROD_RES | DF_WEIGHT_LIST); // 重大结果变化
     updateUIState(SYS_SEQ_DROP, mask, res.totalWeight);
     Serial.printf("[AppProduction] Combined: %.1f g, Mask: 0x%08X\n", res.totalWeight, mask);
 }
 
 void AppProduction::handleDropState(unsigned long now) {
-    // 异步逐个分发下料指令 (开启舵机)
-    if (_dischargeIndex < (int)_selectedIds.size()) {
-        int nodeId = _selectedIds[_dischargeIndex];
-        bool sent = _rs485->asyncWrite(nodeId, REG_CMD_CONTROL, CMD_SERVO_OPEN, [this](Modbus::ResultCode res, uint16_t tid, void* data) {
-            this->_dischargeIndex++;
-            return true;
-        });
+    if (_dischargeIndex < (int)_selectedNodes.size()) {
+        WeightNode* node = _selectedNodes[_dischargeIndex];
+        
+        // 如果已经开启，则看下一个
+        if (node->isServoOpen()) {
+            _dischargeIndex++;
+            return;
+        }
+
+        // 尝试开启
+        if (node->asyncOpenServo()) {
+            Serial.printf("[AppProduction] Sending OPEN to Node %d...\n", node->getId());
+        }
+        
+        // 挂起状态检查：如果重试多次仍失败，通知用户并在运行时拉黑该节点
+        if (node->getRetryCount() >= 3) {
+            char failMsg[32];
+            snprintf(failMsg, sizeof(failMsg), "节点 %d 开启失败", node->getId());
+            strncpy(_ctx->prog.statusText, failMsg, 32);
+            Serial.printf("[AppProduction] CRITICAL: Node %d failed to open after 3 retries. Blacklisting.\n", node->getId());
+            node->setHealthy(false); // 运行时拉黑
+            _dischargeIndex++; // 跳过该错误节点
+        }
     } 
-    // 所有开启指令已发出，但需等待足够的开启时长 (DISCHARGE_MIN_DURATION_MS)
     else if (now - _stateStartTime >= DISCHARGE_MIN_DURATION_MS) {
-        _dischargeIndex = 0; // 重置索引，用于后续逐个关闭
+        _dischargeIndex = 0;
         updateUIState(SYS_SEQ_CLOSE);
     }
 }
 
 void AppProduction::handleCloseState(unsigned long now) {
-    // 异步逐个分发关闭指令
-    if (_dischargeIndex < (int)_selectedIds.size()) {
-        int nodeId = _selectedIds[_dischargeIndex];
-        bool sent = _rs485->asyncWrite(nodeId, REG_CMD_CONTROL, CMD_SERVO_CLOSE, [this](Modbus::ResultCode res, uint16_t tid, void* data) {
-            this->_dischargeIndex++;
-            return true;
-        });
+    if (_dischargeIndex < (int)_selectedNodes.size()) {
+        WeightNode* node = _selectedNodes[_dischargeIndex];
+        
+        if (!node->isServoOpen()) {
+            _dischargeIndex++;
+            return;
+        }
+
+        if (node->asyncCloseServo()) {
+            Serial.printf("[AppProduction] Sending CLOSE to Node %d...\n", node->getId());
+        }
+
+        if (node->getRetryCount() >= 3) {
+            Serial.printf("[AppProduction] CRITICAL: Node %d failed to close. Blacklisting.\n", node->getId());
+            node->setHealthy(false);
+            _dischargeIndex++;
+        }
     } else {
         // 所有舵机关闭完成后，启动皮带运行
-        _b2->stop(); // 重要：高优先级物理互锁，确保输出带停止，为收集带让路
+        _b2->stop(); 
         _belt2Running = false;
 
         _b1->moveDistanceMm(2000);
@@ -209,7 +264,17 @@ void AppProduction::updateUIState(SystemStatus status, uint32_t mask, float weig
     } else {
         switch (status) {
             case SYS_READY:         strncpy(_ctx->prog.statusText, "就绪", 32); break;
-            case SYS_SEQ_DROP:      strncpy(_ctx->prog.statusText, "逐个下料中", 32); break;
+            case SYS_SEQ_DROP: {
+                // 组合反馈：显示选中的 ID 列表和重量
+                char idList[24] = "";
+                for (int i = 0; i < (int)_selectedNodes.size(); i++) {
+                    char buf[8];
+                    snprintf(buf, sizeof(buf), "%d%s", _selectedNodes[i]->getId(), (i == (int)_selectedNodes.size() - 1) ? "" : ",");
+                    strncat(idList, buf, sizeof(idList) - strlen(idList) - 1);
+                }
+                snprintf(_ctx->prog.statusText, 32, "下料:%s (%.1fg)", idList, weight);
+                break;
+            }
             case SYS_SEQ_CLOSE:     strncpy(_ctx->prog.statusText, "逐个关闭中", 32); break;
             case SYS_SETTLE_STABLE: strncpy(_ctx->prog.statusText, "沉降稳定中", 32); break;
             case SYS_BELT_A:        strncpy(_ctx->prog.statusText, "收集皮带运行", 32); break;
@@ -225,26 +290,33 @@ void AppProduction::updateUIState(SystemStatus status, uint32_t mask, float weig
     if (weight > 0.0f) {
         _ctx->prog.batchWeight = weight;
         _ctx->config.accumulatedWeight += weight;
+        _ctx->config.shiftWeight += weight;
+        _ctx->config.totalWeight += weight;
+        _ctx->prog.dirtyFlags |= DF_CONFIG; // 累计重量变化
         saveParams(); // 生产数据落盘
     }
+    _ctx->prog.dirtyFlags |= DF_SYS_STATUS; // 状态文案或状态枚举变化
     xSemaphoreGive(_mutex);
 }
 
 
 void AppProduction::handlePolling() {
+    if (_sequencer.isBusy()) return; // 序列执行期间强制挂起常规轮询
+
     uint8_t nextId = _currentPollId;
     for (int i = 0; i < 20; i++) {
         nextId = (nextId % 20) + 1;
-        if (_pollMgr->isWhitelisted(nextId)) break;
+        if (_nodeMgr->isWhitelisted(nextId)) break;
     }
     
-    if (_pollMgr->asyncUpdateNode(nextId)) {
+    if (_nodeMgr->asyncUpdateNode(nextId)) {
         _currentPollId = nextId;
     }
 }
 
 void AppProduction::onExit() {
     Serial.println("[AppProduction] Production Mode Exited.");
+    _sequencer.stop();
 }
 
 void AppProduction::updateTargets(float deltaBase, float deltaOffset) {
@@ -261,6 +333,7 @@ void AppProduction::updateTargets(float deltaBase, float deltaOffset) {
 
     _ctx->config.targetMin = newBase;
     _ctx->config.targetMax = newBase + newOffset;
+    _ctx->prog.dirtyFlags |= DF_CONFIG; // 目标值设置变化
 
     saveParams();
     xSemaphoreGive(_mutex);
@@ -271,6 +344,8 @@ void AppProduction::loadParams() {
     _ctx->config.targetMin = _nvs.getFloat("tmin", 170.0f); // 默认基准改为 170
     _ctx->config.targetMax = _nvs.getFloat("tmax", 180.0f); // 默认最大改为 180 (170+10)
     _ctx->config.accumulatedWeight = _nvs.getFloat("accu", 0.0f);
+    _ctx->config.shiftWeight = _nvs.getFloat("shift", 0.0f);
+    _ctx->config.totalWeight = _nvs.getFloat("total", 0.0f);
     _nvs.end();
 }
 
@@ -279,5 +354,15 @@ void AppProduction::saveParams() {
     _nvs.putFloat("tmin", _ctx->config.targetMin);
     _nvs.putFloat("tmax", _ctx->config.targetMax);
     _nvs.putFloat("accu", _ctx->config.accumulatedWeight);
+    _nvs.putFloat("shift", _ctx->config.shiftWeight);
+    _nvs.putFloat("total", _ctx->config.totalWeight);
     _nvs.end();
 }
+
+void AppProduction::triggerGlobalTare() {
+    // 启动 1-20 节点的置零序列 (CMD_TARE = 0x01)
+    _sequencer.start(REG_CMD_CONTROL, CMD_TARE, 0, 0); // 0 为置零 UI 码
+    strncpy(_ctx->prog.statusText, "正在执行全局置零...", 32);
+    _ctx->prog.dirtyFlags |= DF_SYS_STATUS;
+}
+

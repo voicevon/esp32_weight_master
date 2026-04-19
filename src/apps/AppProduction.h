@@ -3,13 +3,15 @@
 
 #include "apps/IApp.h"
 #include "system/SystemContext.h"
+#include "logic/StepSequencer.h"
 #include <vector>
 #include <Preferences.h>
 
-class PollManager;
 class ModbusMaster;
 class CombinationEngine;
 class Belt;
+class NodeManager;
+class WeightNode;
 
 /**
  * @class AppProduction
@@ -18,7 +20,7 @@ class Belt;
  */
 class AppProduction : public IApp {
 public:
-    AppProduction(SystemContext* ctx, PollManager* pollMgr, ModbusMaster* rs485,
+    AppProduction(SystemContext* ctx, NodeManager* nodeMgr, ModbusMaster* rs485,
                   CombinationEngine* engine, Belt* b1, Belt* b2,
                   SemaphoreHandle_t mutex);
 
@@ -30,10 +32,11 @@ public:
 
     // 生产参数管理 (从 AppController 迁移)
     void updateTargets(float dMin, float dMax);
+    void triggerGlobalTare();
 
 private:
     SystemContext*      _ctx;
-    PollManager*        _pollMgr;
+    NodeManager*        _nodeMgr;
     ModbusMaster*       _rs485;
     CombinationEngine*  _engine;
     Belt*               _b1;
@@ -45,9 +48,9 @@ private:
     uint8_t             _currentPollId = 1;
     
     // 异步状态机变量
-    unsigned long       _stateStartTime = 0;
-    std::vector<int>    _selectedIds;
-    int                 _dischargeIndex = 0;
+    unsigned long            _stateStartTime = 0;
+    std::vector<WeightNode*> _selectedNodes;
+    int                      _dischargeIndex = 0;
     float               _lastCombinedWeight = 0;
     unsigned long       _belt2StartTime = 0;
     bool                _belt2Running = false;
@@ -63,6 +66,8 @@ private:
     void updateUIState(SystemStatus status, uint32_t mask = 0, float weight = 0.0f, bool success = true);
     void loadParams();
     void saveParams();
+
+    StepSequencer _sequencer;
 };
 
 #endif // APP_PRODUCTION_H
