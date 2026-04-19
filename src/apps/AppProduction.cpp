@@ -20,7 +20,11 @@ AppProduction::AppProduction(SystemContext* ctx, NodeManager* nodeMgr, ModbusMas
 }
 
 void AppProduction::onEnter() {
+    xSemaphoreTake(_mutex, portMAX_DELAY);
     loadParams();
+    _ctx->prog.dirtyFlags |= DF_CONFIG; // 关键修复：确保加载的 NVS 参数能立即同步到 UI
+    xSemaphoreGive(_mutex);
+
     _dischargeIndex = 0;
     _selectedNodes.clear();
     _stateStartTime = millis();
