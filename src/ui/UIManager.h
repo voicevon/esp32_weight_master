@@ -35,12 +35,22 @@ private:
     
     // --- Tabs ---
     lv_obj_t* tabview = nullptr;
+    lv_obj_t* shift_tab = nullptr;
     lv_obj_t* dashboard_tab = nullptr;
     lv_obj_t* admin_tab = nullptr;
     lv_obj_t* about_tab = nullptr;
 
     // --- About Section ---
     void buildAboutView(lv_obj_t* parent);
+
+    // --- Shift Section ---
+    void buildShiftView(lv_obj_t* parent);
+    lv_obj_t* shift_btn_in = nullptr;
+    lv_obj_t* shift_btn_out = nullptr;
+    lv_obj_t* shift_total_weight_label = nullptr;
+    lv_obj_t* shift_shift_weight_label = nullptr;
+    lv_obj_t* shift_work_weight_label = nullptr;
+    lv_obj_t* shift_status_label = nullptr;
 
     // --- Components ---
     lv_obj_t* status_label = nullptr;

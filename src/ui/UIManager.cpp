@@ -49,8 +49,10 @@ static void tab_change_event_cb(lv_event_t * e) {
     
     if (ui && ui->getBus()) {
         if (tab_id == 0) {
-            ui->getBus()->updateOperationMode(MODE_PRODUCTION);
+            ui->getBus()->updateOperationMode(MODE_SHIFT_MANAGEMENT);
         } else if (tab_id == 1) {
+            ui->getBus()->updateOperationMode(MODE_PRODUCTION);
+        } else if (tab_id == 2) {
             // 系统维护 Tab：根据当前嵌套的子 Tab 决定模式
             lv_obj_t* admin_tv = ui->getAdminTv();
             if (admin_tv) {
@@ -68,6 +70,16 @@ static void tab_change_event_cb(lv_event_t * e) {
             ui->getBus()->updateOperationMode(MODE_ABOUT);
         }
     }
+}
+
+static void btn_shift_in_event_cb(lv_event_t * e) {
+    UIManager* ui = (UIManager*)lv_event_get_user_data(e);
+    if (ui && ui->getBus()) ui->getBus()->cmdDiagAction(10); // 假设 10 为一键上班
+}
+
+static void btn_shift_out_event_cb(lv_event_t * e) {
+    UIManager* ui = (UIManager*)lv_event_get_user_data(e);
+    if (ui && ui->getBus()) ui->getBus()->cmdDiagAction(11); // 假设 11 为一键下班
 }
 
 static void btn_tare_event_cb(lv_event_t * e) {
@@ -252,21 +264,127 @@ void UIManager::init() {
     lv_obj_set_style_border_width(tabview, 0, 0);
     lv_obj_set_size(tabview, 800, 480);
 
-    dashboard_tab = lv_tabview_add_tab(tabview, "配重机平台");
+    shift_tab = lv_tabview_add_tab(tabview, "上下班");
+    dashboard_tab = lv_tabview_add_tab(tabview, "生产主界面");
     admin_tab = lv_tabview_add_tab(tabview, "系统维护");
     about_tab = lv_tabview_add_tab(tabview, "关于我们");
+
+    lv_obj_set_style_pad_all(shift_tab, 0, 0);
+    lv_obj_set_scrollbar_mode(shift_tab, LV_SCROLLBAR_MODE_OFF);
 
     lv_obj_set_style_pad_all(dashboard_tab, 0, 0);
     lv_obj_set_style_border_width(dashboard_tab, 0, 0);
     lv_obj_set_scrollbar_mode(dashboard_tab, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_set_scrollbar_mode(admin_tab, LV_SCROLLBAR_MODE_AUTO);
+    lv_obj_set_scrollbar_mode(admin_tab, LV_SCROLLBAR_MODE_OFF); // 调整为 OFF，由嵌套接管
     lv_obj_set_scrollbar_mode(about_tab, LV_SCROLLBAR_MODE_OFF);
 
+    buildShiftView(shift_tab);
     buildDashboardView(dashboard_tab);
     buildAdminView(admin_tab);
     buildAboutView(about_tab);
 
-    Serial.println("[UI] Quad-tab UI initialized with ICommandBus.");
+    Serial.println("[UI] Quad-tab UI initialized with Shift Management.");
+}
+
+void UIManager::buildShiftView(lv_obj_t* parent) {
+    // 背景装饰
+    lv_obj_t* bg_panel = lv_obj_create(parent);
+    lv_obj_set_size(bg_panel, 800, 440);
+    lv_obj_set_style_bg_color(bg_panel, lv_color_hex(0x0F172A), 0);
+    lv_obj_set_style_border_width(bg_panel, 0, 0);
+    lv_obj_set_style_pad_all(bg_panel, 20, 0);
+    lv_obj_set_scrollbar_mode(bg_panel, LV_SCROLLBAR_MODE_OFF);
+
+    // 1. 顶部操作区
+    lv_obj_t* btn_cont = lv_obj_create(bg_panel);
+    lv_obj_set_size(btn_cont, 760, 200);
+    lv_obj_align(btn_cont, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_set_style_bg_opa(btn_cont, 0, 0);
+    lv_obj_set_style_border_width(btn_cont, 0, 0);
+    lv_obj_set_flex_flow(btn_cont, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(btn_cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_gap(btn_cont, 40, 0);
+    lv_obj_set_scrollbar_mode(btn_cont, LV_SCROLLBAR_MODE_OFF);
+
+    // 一键上班
+    shift_btn_in = lv_btn_create(btn_cont);
+    lv_obj_set_size(shift_btn_in, 320, 140);
+    lv_obj_set_style_bg_color(shift_btn_in, lv_color_hex(0x06B6D4), 0); // Cyan
+    lv_obj_set_style_radius(shift_btn_in, 15, 0);
+    lv_obj_set_style_shadow_width(shift_btn_in, 20, 0);
+    lv_obj_set_style_shadow_color(shift_btn_in, lv_color_hex(0x06B6D4), 0);
+    lv_obj_set_style_shadow_opa(shift_btn_in, 100, 0);
+    lv_obj_add_event_cb(shift_btn_in, btn_shift_in_event_cb, LV_EVENT_CLICKED, this);
+
+    lv_obj_t* lbl_in = lv_label_create(shift_btn_in);
+    lv_obj_set_style_text_font(lbl_in, &ui_font_chs_16, 0);
+    lv_label_set_text(lbl_in, "一键上班"); 
+    lv_obj_center(lbl_in);
+    
+    // 一键下班
+    shift_btn_out = lv_btn_create(btn_cont);
+    lv_obj_set_size(shift_btn_out, 320, 140);
+    lv_obj_set_style_bg_color(shift_btn_out, lv_color_hex(0xF59E0B), 0); // Amber
+    lv_obj_set_style_radius(shift_btn_out, 15, 0);
+    lv_obj_set_style_shadow_width(shift_btn_out, 20, 0);
+    lv_obj_set_style_shadow_color(shift_btn_out, lv_color_hex(0xF59E0B), 0);
+    lv_obj_set_style_shadow_opa(shift_btn_out, 100, 0);
+    lv_obj_add_event_cb(shift_btn_out, btn_shift_out_event_cb, LV_EVENT_CLICKED, this);
+
+    lv_obj_t* lbl_out = lv_label_create(shift_btn_out);
+    lv_obj_set_style_text_font(lbl_out, &ui_font_chs_16, 0);
+    lv_label_set_text(lbl_out, "一键下班");
+    lv_obj_center(lbl_out);
+    
+    lv_obj_t* lbl_stat_msg = lv_label_create(bg_panel); 
+    shift_status_label = lbl_stat_msg;
+    lv_obj_set_style_text_font(shift_status_label, &ui_font_chs_16, 0);
+    lv_obj_set_style_text_color(shift_status_label, lv_color_hex(0xE2E8F0), 0);
+    lv_label_set_text(shift_status_label, "系统准备就绪");
+    lv_obj_align(shift_status_label, LV_ALIGN_TOP_MID, 0, 160);
+
+    // 2. 统计报表区
+    lv_obj_t* stat_panel = lv_obj_create(bg_panel);
+    lv_obj_set_size(stat_panel, 760, 180);
+    lv_obj_align(stat_panel, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_set_style_bg_color(stat_panel, lv_color_hex(0x1E293B), 0);
+    lv_obj_set_style_radius(stat_panel, 12, 0);
+    lv_obj_set_style_border_color(stat_panel, lv_color_hex(0x334155), 0);
+    lv_obj_set_style_pad_all(stat_panel, 20, 0);
+    lv_obj_set_scrollbar_mode(stat_panel, LV_SCROLLBAR_MODE_OFF);
+
+    lv_obj_t* stat_title = lv_label_create(stat_panel);
+    lv_obj_set_style_text_font(stat_title, &ui_font_chs_16, 0);
+    lv_obj_set_style_text_color(stat_title, lv_color_hex(0x38BDF8), 0);
+    lv_label_set_text(stat_title, "生产统计报表");
+    lv_obj_align(stat_title, LV_ALIGN_TOP_LEFT, 0, 0);
+
+    // 统计项
+    auto create_stat_item = [&](int x_offset, const char* title, lv_obj_t** val_label, uint32_t color) {
+        lv_obj_t* cont = lv_obj_create(stat_panel);
+        lv_obj_set_size(cont, 220, 110);
+        lv_obj_align(cont, LV_ALIGN_BOTTOM_LEFT, x_offset, 0);
+        lv_obj_set_style_bg_opa(cont, 0, 0);
+        lv_obj_set_style_border_width(cont, 0, 0);
+        lv_obj_set_scrollbar_mode(cont, LV_SCROLLBAR_MODE_OFF);
+        
+        lv_obj_t* t = lv_label_create(cont);
+        lv_obj_set_style_text_font(t, &ui_font_chs_16, 0);
+        lv_obj_set_style_text_color(t, lv_color_hex(0x94A3B8), 0);
+        lv_label_set_text(t, title);
+        lv_obj_align(t, LV_ALIGN_TOP_MID, 0, 0);
+
+        *val_label = lv_label_create(cont);
+        lv_obj_set_style_text_font(*val_label, &lv_font_montserrat_26, 0); // 暂用英文
+        lv_obj_set_style_text_color(*val_label, lv_color_hex(color), 0);
+        lv_label_set_text(*val_label, "0.0 克"); // 这里强制加上中文
+        lv_obj_set_style_text_font(*val_label, &ui_font_chs_16, 0); // 必须用中文字体支持“克”
+        lv_obj_align(*val_label, LV_ALIGN_BOTTOM_MID, 0, 0);
+    };
+
+    create_stat_item(0,   "累计总重量", &shift_total_weight_label, 0xE2E8F0);
+    create_stat_item(240, "当前班次重量", &shift_shift_weight_label, 0x38BDF8);
+    create_stat_item(480, "单次工作重量", &shift_work_weight_label, 0x10B981);
 }
 
 void UIManager::buildDashboardView(lv_obj_t* parent) {
@@ -288,13 +406,14 @@ void UIManager::buildDashboardView(lv_obj_t* parent) {
     accu_weight_label = lv_label_create(header);
     lv_obj_set_style_text_font(accu_weight_label, &ui_font_chs_16, 0);
     lv_obj_set_style_text_color(accu_weight_label, lv_color_white(), 0);
-    lv_label_set_text(accu_weight_label, "总产量: 0.0g");
+    lv_label_set_text(accu_weight_label, "");
+    lv_obj_add_flag(accu_weight_label, LV_OBJ_FLAG_HIDDEN); // 隐藏总产量
     lv_obj_align(accu_weight_label, LV_ALIGN_CENTER, 0, 0);
 
     target_label = lv_label_create(header);
     lv_obj_set_style_text_font(target_label, &ui_font_chs_16, 0);
     lv_obj_set_style_text_color(target_label, lv_color_hex(0x38BDF8), 0);
-    lv_label_set_text(target_label, "目标: 290-310g");
+    lv_label_set_text(target_label, "目标: 290-310 克");
     lv_obj_align(target_label, LV_ALIGN_RIGHT_MID, -10, 0);
     lv_obj_add_flag(target_label, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(target_label, target_label_event_cb, LV_EVENT_CLICKED, this);
@@ -329,7 +448,7 @@ void UIManager::buildDashboardView(lv_obj_t* parent) {
     lv_obj_set_style_text_color(label_stable_total, lv_color_hex(0x10B981), 0);
     lv_obj_set_style_text_align(label_stable_total, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_align(label_stable_total, LV_ALIGN_CENTER, 0, -5);
-    lv_label_set_text(label_stable_total, "0 g");
+    lv_label_set_text(label_stable_total, "0 克");
 
     // 段 2: 未稳重量 (增量位 - 中心偏右)
     label_unstable_total = lv_label_create(center_area);
@@ -353,7 +472,7 @@ void UIManager::buildDashboardView(lv_obj_t* parent) {
     lv_obj_set_style_text_color(label_grand_total, lv_color_hex(0xE2E8F0), 0);
     lv_obj_set_style_text_align(label_grand_total, LV_TEXT_ALIGN_LEFT, 0);
     lv_obj_align(label_grand_total, LV_ALIGN_LEFT_MID, 65, 0);
-    lv_label_set_text(label_grand_total, "0 g");
+    lv_label_set_text(label_grand_total, "0 克");
 
     // [新增] 上次成功组合重量显示 (右侧)
     label_last_batch_prefix = lv_label_create(center_area);
@@ -368,7 +487,7 @@ void UIManager::buildDashboardView(lv_obj_t* parent) {
     lv_obj_set_style_text_color(label_last_batch_val, lv_color_hex(0x22D3EE), 0); // 预设为青色
     lv_obj_set_style_text_align(label_last_batch_val, LV_TEXT_ALIGN_LEFT, 0);
     lv_obj_align(label_last_batch_val, LV_ALIGN_RIGHT_MID, -5, -8);
-    lv_label_set_text(label_last_batch_val, "0 g");
+    lv_label_set_text(label_last_batch_val, "0 克");
 
     label_last_batch_ids = lv_label_create(center_area);
     lv_obj_set_style_text_font(label_last_batch_ids, &lv_font_montserrat_16, 0);
@@ -432,7 +551,7 @@ void UIManager::buildAdminView(lv_obj_t* parent) {
 
     // 2. 添加四个功能 Tab
     lv_obj_t* t_scan = lv_tabview_add_tab(admin_tv, "节点");
-    lv_obj_t* t_servo = lv_tabview_add_tab(admin_tv, "舵机");
+    lv_obj_t* t_servo = lv_tabview_add_tab(admin_tv, "料斗");
     lv_obj_t* t_belt = lv_tabview_add_tab(admin_tv, "皮带");
     lv_obj_t* t_modbus = lv_tabview_add_tab(admin_tv, "总线");
 
@@ -859,14 +978,18 @@ void UIManager::updateDashboard(const SystemContext* ctx) {
     }
 
     // 1. 生产数据统计
-    if (_isFirstUpdate || (flags & DF_CONFIG)) {
-        // 总产量 (kg)
-        snprintf(buf, sizeof(buf), "总产量: %.3f kg", ctx->config.accumulatedWeight / 1000.0f);
-        lv_label_set_text(accu_weight_label, buf);
+    if (_isFirstUpdate || (ctx->prog.dirtyFlags & DF_CONFIG)) {
+        // 更新上下班管理页面的报表数据
+        if (shift_total_weight_label) lv_label_set_text_fmt(shift_total_weight_label, "%.1f 克", ctx->config.totalWeight);
+        if (shift_shift_weight_label) lv_label_set_text_fmt(shift_shift_weight_label, "%.1f 克", ctx->config.shiftWeight);
+        if (shift_work_weight_label) lv_label_set_text_fmt(shift_work_weight_label, "%.1f 克", ctx->config.accumulatedWeight);
 
-        // 目标范围
-        snprintf(buf, sizeof(buf), "目标: %.0f + %.0fg", ctx->config.targetMin, ctx->config.targetMax - ctx->config.targetMin);
-        lv_label_set_text(target_label, buf);
+        // 更新仪表盘目标范围
+        if (target_label) lv_label_set_text_fmt(target_label, "目标: %.1f-%.1f 克", ctx->config.targetMin, ctx->config.targetMax);
+    }
+
+    if (_isFirstUpdate || (ctx->prog.dirtyFlags & DF_SYS_STATUS)) {
+        if (shift_status_label) lv_label_set_text(shift_status_label, ctx->prog.statusText);
     }
 
     // 2. 序列操作与动作进度

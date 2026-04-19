@@ -17,6 +17,7 @@
 #include "apps/AppServoTest.h"
 #include "apps/AppBeltDiag.h"
 #include "apps/AppModbusDiag.h"
+#include "apps/AppShift.h"
 
 // --- 全局共享状态 ---
 SystemContext      sysCtx;
@@ -44,6 +45,7 @@ AppScan            appScan(&sysCtx, &nodeManager, &rs485, nullptr);
 AppServoTest       appServoTest(&sysCtx, &rs485, &nodeManager);  // [新] 维修模式
 AppBeltDiag        appBeltDiag(&sysCtx, &rs485, &beltPrimary, &beltSecondary, nullptr);
 AppModbusDiag      appModbusDiag(&sysCtx, &rs485);
+AppShift           appShift(&sysCtx, &rs485, &nodeManager, &beltPrimary, &beltSecondary);
 
 void setup() {
     Serial.begin(115200);
@@ -67,6 +69,7 @@ void setup() {
     appServoTest  = AppServoTest(&sysCtx, &rs485, &nodeManager);
     appBeltDiag   = AppBeltDiag(&sysCtx, &rs485, &beltPrimary, &beltSecondary, mutexCtx);
     appModbusDiag = AppModbusDiag(&sysCtx, &rs485); // 分配给调度器
+    appShift      = AppShift(&sysCtx, &rs485, &nodeManager, &beltPrimary, &beltSecondary);
 
     // 注册应用
     kernel.registerApp(&appProduction);
@@ -74,9 +77,10 @@ void setup() {
     kernel.registerApp(&appServoTest);
     kernel.registerApp(&appBeltDiag);
     kernel.registerApp(&appModbusDiag);
+    kernel.registerApp(&appShift);
 
-    // 启动调度器 (内部会启动双核任务)
-    kernel.begin(MODE_PRODUCTION); 
+    // 启动调度器 (从上下班管理页面开始)
+    kernel.begin(MODE_SHIFT_MANAGEMENT); 
 }
 
 void loop() {

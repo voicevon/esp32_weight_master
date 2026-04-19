@@ -16,7 +16,8 @@ enum OperationMode {
     MODE_SERVO_TEST,     // 舵机维护测试模式 (独占总线)
     MODE_BELT_DIAG,      // 皮带诊断跑距测试模式 (独占总线)
     MODE_MODBUS_DIAG,    // Modbus 诊断器模式 (独占总线)
-    MODE_ABOUT           // 关于界面
+    MODE_ABOUT,          // 关于界面
+    MODE_SHIFT_MANAGEMENT // 上下班管理模式 (新增)
 };
  
 /**
@@ -98,7 +99,9 @@ enum DirtyFlag : uint32_t {
 struct ProductionParams {
     float targetMin;
     float targetMax;
-    float accumulatedWeight;
+    float accumulatedWeight; // 当前工作量 (可手动清零)
+    float shiftWeight;       // 单班次重量 (一键下班清零)
+    float totalWeight;       // 系统总重量 (永久累计)
     bool  isProductionEnabled;
 };
 

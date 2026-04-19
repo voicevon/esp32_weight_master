@@ -9,7 +9,7 @@
 #include "apps/AppServoTest.h"
 #include "apps/AppBeltDiag.h"
 #include "apps/AppModbusDiag.h"
-#include "apps/AppModbusDiag.h"
+#include "apps/AppShift.h"
 
 SystemKernel::SystemKernel(SystemContext* ctx, ModbusMaster* rs485, NodeManager* nodeMgr, UIManager* ui, Belt* b1, Belt* b2)
     : _ctx(ctx), _rs485(rs485), _nodeMgr(nodeMgr), _ui(ui), _b1(b1), _b2(b2) {
@@ -138,6 +138,14 @@ void SystemKernel::cmdSetDiagTarget(int id) {
 }
 
 void SystemKernel::cmdDiagAction(int actionId) {
+    if (actionId == 10 || actionId == 11) {
+        IApp* app = findApp(MODE_SHIFT_MANAGEMENT);
+        if (app) {
+            if (actionId == 10) static_cast<AppShift*>(app)->triggerStartShift();
+            else static_cast<AppShift*>(app)->triggerEndShift();
+        }
+        return;
+    }
     IApp* app = findApp(MODE_MODBUS_DIAG);
     if (app) ((AppModbusDiag*)app)->triggerAction(actionId);
 }
@@ -314,6 +322,7 @@ const char* SystemKernel::modeToStr(OperationMode m) {
         case MODE_BELT_DIAG:       return "BELT_DIAG";
         case MODE_MODBUS_DIAG:     return "MODBUS_DIAG";
         case MODE_ABOUT:           return "ABOUT";
+        case MODE_SHIFT_MANAGEMENT: return "SHIFT_MGMT";
         default:                   return "UNKNOWN";
     }
 }

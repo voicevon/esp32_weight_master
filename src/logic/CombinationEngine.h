@@ -2,6 +2,8 @@
 #define COMBINATION_ENGINE_H
 
 #include <vector>
+#include <Arduino.h>
+
 
 class WeightNode;
 
@@ -9,6 +11,17 @@ struct CombinationResult {
     bool success;
     float totalWeight;
     std::vector<WeightNode*> selectedNodes; 
+};
+
+struct InternalNode {
+    float weight;
+    WeightNode* node;
+};
+
+// 搜索过程中的轻量化结果
+struct SearchMatch {
+    uint32_t mask;
+    float totalWeight;
 };
 
 class CombinationEngine {
@@ -26,6 +39,13 @@ public:
 private:
     float _minWeight;
     float _maxWeight;
+    float _suffixSums[32]; // 存储后缀和以便剪枝加速
+
+    void solveDFS(int index, float currentSum, uint32_t currentMask,
+                  const std::vector<InternalNode>& candidates, 
+                  std::vector<SearchMatch>& foundMatches,
+                  unsigned long startTime, unsigned long timeoutMs);
 };
+
 
 #endif

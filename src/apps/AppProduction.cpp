@@ -286,6 +286,8 @@ void AppProduction::updateUIState(SystemStatus status, uint32_t mask, float weig
     if (weight > 0.0f) {
         _ctx->prog.batchWeight = weight;
         _ctx->config.accumulatedWeight += weight;
+        _ctx->config.shiftWeight += weight;
+        _ctx->config.totalWeight += weight;
         _ctx->prog.dirtyFlags |= DF_CONFIG; // 累计重量变化
         saveParams(); // 生产数据落盘
     }
@@ -338,6 +340,8 @@ void AppProduction::loadParams() {
     _ctx->config.targetMin = _nvs.getFloat("tmin", 170.0f); // 默认基准改为 170
     _ctx->config.targetMax = _nvs.getFloat("tmax", 180.0f); // 默认最大改为 180 (170+10)
     _ctx->config.accumulatedWeight = _nvs.getFloat("accu", 0.0f);
+    _ctx->config.shiftWeight = _nvs.getFloat("shift", 0.0f);
+    _ctx->config.totalWeight = _nvs.getFloat("total", 0.0f);
     _nvs.end();
 }
 
@@ -346,6 +350,8 @@ void AppProduction::saveParams() {
     _nvs.putFloat("tmin", _ctx->config.targetMin);
     _nvs.putFloat("tmax", _ctx->config.targetMax);
     _nvs.putFloat("accu", _ctx->config.accumulatedWeight);
+    _nvs.putFloat("shift", _ctx->config.shiftWeight);
+    _nvs.putFloat("total", _ctx->config.totalWeight);
     _nvs.end();
 }
 
