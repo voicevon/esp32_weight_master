@@ -414,7 +414,7 @@ void UIManager::buildDashboardView(lv_obj_t* parent) {
     // 新增：置零按钮 (位于状态文字旁)
     dashboard_tare_btn = lv_btn_create(header);
     lv_obj_set_size(dashboard_tare_btn, 80, 32);
-    lv_obj_align(dashboard_tare_btn, LV_ALIGN_LEFT_MID, 130, 0);
+    lv_obj_align(dashboard_tare_btn, LV_ALIGN_LEFT_MID, 450, 0);
     lv_obj_set_style_bg_color(dashboard_tare_btn, lv_color_hex(0x475569), 0);
     lv_obj_set_style_border_width(dashboard_tare_btn, 1, 0);
     lv_obj_set_style_border_color(dashboard_tare_btn, lv_color_hex(0x94A3B8), 0);
