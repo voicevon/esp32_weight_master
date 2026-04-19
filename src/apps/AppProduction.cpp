@@ -7,6 +7,7 @@
 #include "drivers/ModbusMaster.h"
 #include "logic/CombinationEngine.h"
 #include "drivers/Belt.h"
+#include <algorithm>
 
 #define BELT2_AUTO_STOP_MS            5000  // 二级带自主停机超时 (5秒)
 
@@ -117,6 +118,21 @@ void AppProduction::handleReadyState(unsigned long now) {
     if (!res.success) {
         // 寻解失败时不清除上一次的 idMask 和快照，实现“锁定显示”
         updateUIState(SYS_READY, _ctx->prog.idMask, 0, false); 
+
+        static unsigned long lastFailLogTime = 0;
+        if (now - lastFailLogTime > 2000) { // 限制每2秒最多打印一次失败详情，防止刷屏
+            lastFailLogTime = now;
+            std::sort(stableNodes.begin(), stableNodes.end(), [](WeightNode* a, WeightNode* b) {
+                return a->getWeight() > b->getWeight(); // 从大到小降序排列
+            });
+            
+            Serial.printf("\n[AppProduction] COMBINATION FAILED! Target Range: %.0f - %.0f g\n", currentMin, currentMax);
+            Serial.printf("[AppProduction] Currently Available Stable Nodes (%d total):\n", stableNodes.size());
+            for (auto* n : stableNodes) {
+                Serial.printf("  - Node %2d : %.1f g\n", n->getId(), n->getWeight());
+            }
+            Serial.println("[AppProduction] -------------------");
+        }
         return;
     }
 

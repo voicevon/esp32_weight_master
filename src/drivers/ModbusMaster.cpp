@@ -107,6 +107,7 @@ bool ModbusMaster::asyncRead(uint8_t id, uint16_t addr, uint16_t count, cbTransa
     _txBuf[5] = count & 0xFF;
     
     while(Serial1.available()) Serial1.read(); // 清空缓冲区
+    vTaskDelay(pdMS_TO_TICKS(5)); // --- 核心修复：强制总线空闲间隔，防止与从机方向切换冲突 ---
     sendPacket(_txBuf, 6);
     
     if (_logLevel >= LOG_VERBOSE) {
@@ -138,6 +139,7 @@ bool ModbusMaster::asyncWrite(uint8_t id, uint16_t addr, uint16_t value, cbTrans
     _txBuf[5] = value & 0xFF;
     
     while(Serial1.available()) Serial1.read();
+    vTaskDelay(pdMS_TO_TICKS(5)); // --- 核心修复：强制总线空闲间隔 ---
     sendPacket(_txBuf, 6);
     
     if (_logLevel >= LOG_VERBOSE) {

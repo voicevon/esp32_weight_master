@@ -360,15 +360,21 @@ void UIManager::buildDashboardView(lv_obj_t* parent) {
     lv_obj_set_style_text_font(label_last_batch_prefix, &ui_font_chs_16, 0);
     lv_obj_set_style_text_color(label_last_batch_prefix, lv_color_hex(0x94A3B8), 0);
     lv_label_set_text(label_last_batch_prefix, "上轮:");
-    lv_obj_align(label_last_batch_prefix, LV_ALIGN_RIGHT_MID, -120, 0);
+    lv_obj_align(label_last_batch_prefix, LV_ALIGN_RIGHT_MID, -120, -12);
 
     label_last_batch_val = lv_label_create(center_area);
     lv_obj_set_size(label_last_batch_val, 110, 40);
     lv_obj_set_style_text_font(label_last_batch_val, &lv_font_montserrat_26, 0);
     lv_obj_set_style_text_color(label_last_batch_val, lv_color_hex(0x22D3EE), 0); // 预设为青色
     lv_obj_set_style_text_align(label_last_batch_val, LV_TEXT_ALIGN_LEFT, 0);
-    lv_obj_align(label_last_batch_val, LV_ALIGN_RIGHT_MID, -5, 0);
+    lv_obj_align(label_last_batch_val, LV_ALIGN_RIGHT_MID, -5, -8);
     lv_label_set_text(label_last_batch_val, "0 g");
+
+    label_last_batch_ids = lv_label_create(center_area);
+    lv_obj_set_style_text_font(label_last_batch_ids, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(label_last_batch_ids, lv_color_hex(0x64748B), 0);
+    lv_label_set_text(label_last_batch_ids, "ID: --");
+    lv_obj_align(label_last_batch_ids, LV_ALIGN_RIGHT_MID, -25, 20);
 
     lv_obj_t* graph_container = lv_obj_create(parent);
     lv_obj_set_size(graph_container, 800, 260); // 拉高到 260
@@ -908,10 +914,26 @@ void UIManager::updateDashboard(const SystemContext* ctx) {
     }
 
     // 4. 上次成功组合重量 (Snapshot)
-    if (_isFirstUpdate || (flags & DF_WEIGHT_LIST)) {
+    if (_isFirstUpdate || (flags & (DF_WEIGHT_LIST | DF_PROD_RES | DF_OP_MODE))) {
         if (label_last_batch_val) {
             snprintf(buf, sizeof(buf), "%.1f g", ctx->prog.batchWeight);
             lv_label_set_text(label_last_batch_val, buf);
+        }
+        if (label_last_batch_ids) {
+            char idStr[64] = "ID: ";
+            bool first = true;
+            for (int i = 0; i < 20; i++) {
+                if (ctx->prog.idMask & (1 << i)) {
+                    char temp[8];
+                    snprintf(temp, sizeof(temp), "%s%d", first ? "" : ",", i + 1);
+                    strncat(idStr, temp, sizeof(idStr) - strlen(idStr) - 1);
+                    first = false;
+                }
+            }
+            if (first) {
+                snprintf(idStr, sizeof(idStr), "ID: --");
+            }
+            lv_label_set_text(label_last_batch_ids, idStr);
         }
     }
 

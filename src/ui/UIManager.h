@@ -51,6 +51,7 @@ private:
     lv_obj_t* label_grand_total = nullptr;
     lv_obj_t* label_last_batch_prefix = nullptr;
     lv_obj_t* label_last_batch_val = nullptr;
+    lv_obj_t* label_last_batch_ids = nullptr;
     lv_obj_t* node_bars[21];
     lv_obj_t* node_weight_labels[21];
     
