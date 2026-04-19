@@ -35,6 +35,10 @@ public:
     void triggerStartShift();
     void triggerEndShift();
 
+    // 状态查询
+    bool isShiftOutRunning() const { return _isEndShift && _state != IDLE && _state != DONE; }
+    bool isShiftOutFinished() const { return _isEndShift && _state == DONE; }
+
 private:
     SystemContext* _ctx;
     ModbusMaster*  _rs485;

@@ -47,6 +47,7 @@ private:
     void buildShiftView(lv_obj_t* parent);
     lv_obj_t* shift_btn_in = nullptr;
     lv_obj_t* shift_btn_out = nullptr;
+    lv_obj_t* shift_btn_out_label = nullptr; 
     lv_obj_t* shift_total_weight_label = nullptr;
     lv_obj_t* shift_shift_weight_label = nullptr;
     lv_obj_t* shift_work_weight_label = nullptr;

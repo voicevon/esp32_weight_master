@@ -274,6 +274,10 @@ void SystemKernel::uiLoop() {
                 _ctx->ui.serialAutoSend = _ctx->prog.diagAutoSend;
                 _ctx->ui.serialLogTick  = _ctx->prog.diagLogTick;
                 strncpy(_ctx->ui.serialLogLine, _ctx->prog.diagLogLine, sizeof(_ctx->ui.serialLogLine));
+            } else if (_currentMode == MODE_SHIFT_MANAGEMENT) {
+                AppShift* shift = static_cast<AppShift*>(_currentApp);
+                _ctx->ui.isShiftOutRunning = shift->isShiftOutRunning();
+                _ctx->ui.isShiftOutFinished = shift->isShiftOutFinished();
             }
         }
 

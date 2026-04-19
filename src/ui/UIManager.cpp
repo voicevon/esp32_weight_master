@@ -331,10 +331,10 @@ void UIManager::buildShiftView(lv_obj_t* parent) {
     lv_obj_set_style_shadow_opa(shift_btn_out, 100, 0);
     lv_obj_add_event_cb(shift_btn_out, btn_shift_out_event_cb, LV_EVENT_CLICKED, this);
 
-    lv_obj_t* lbl_out = lv_label_create(shift_btn_out);
-    lv_obj_set_style_text_font(lbl_out, &ui_font_chs_16, 0);
-    lv_label_set_text(lbl_out, "一键下班");
-    lv_obj_center(lbl_out);
+    shift_btn_out_label = lv_label_create(shift_btn_out);
+    lv_obj_set_style_text_font(shift_btn_out_label, &ui_font_chs_16, 0);
+    lv_label_set_text(shift_btn_out_label, "一键下班");
+    lv_obj_center(shift_btn_out_label);
     
     // shift_status_label 已移除以避免重叠问题
 
@@ -1190,6 +1190,23 @@ void UIManager::updateDashboard(const SystemContext* ctx) {
             // 限制条数：最多保留 40 条
             if (lv_obj_get_child_cnt(diag_log_view) > 40) {
                 lv_obj_del(lv_obj_get_child(diag_log_view, 0));
+            }
+        }
+    }
+
+    // 9. 上下班反馈同步
+    if (ctx->ui.curMode == MODE_SHIFT_MANAGEMENT && (flags & (DF_PROGRESS | DF_OP_MODE))) {
+        if (shift_btn_out && shift_btn_out_label) {
+            if (ctx->ui.isShiftOutRunning) {
+                lv_obj_set_style_bg_color(shift_btn_out, lv_color_hex(0x94A3B8), 0); // 灰色
+                lv_label_set_text(shift_btn_out_label, "正在执行下班流程\n请不要关闭电源");
+            } else if (ctx->ui.isShiftOutFinished) {
+                lv_obj_set_style_bg_color(shift_btn_out, lv_color_hex(0x94A3B8), 0); // 保持灰色
+                lv_label_set_text(shift_btn_out_label, "请关闭电源");
+            } else {
+                // 恢复默认
+                lv_obj_set_style_bg_color(shift_btn_out, lv_color_hex(0xF59E0B), 0); // Amber
+                lv_label_set_text(shift_btn_out_label, "一键下班");
             }
         }
     }

@@ -168,6 +168,8 @@ struct UISnapshot {
     uint32_t      serialLogTick;      // 日志更新序列号
     bool          lastCalcSuccess;    // 生产模式：上次寻解是否成功
     float         lastBatchWeights[21]; // [新增] 最近一次组合中各节点的具体重量快照
+    bool          isShiftOutRunning;    // [新增] 是否正在执行一键下班流程
+    bool          isShiftOutFinished;   // [新增] 一键下班流程是否已完成
     uint32_t      dirtyFlags;           // [新增] 脏标记位掩码
 };
 
