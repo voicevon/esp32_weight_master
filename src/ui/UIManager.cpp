@@ -336,12 +336,7 @@ void UIManager::buildShiftView(lv_obj_t* parent) {
     lv_label_set_text(lbl_out, "一键下班");
     lv_obj_center(lbl_out);
     
-    lv_obj_t* lbl_stat_msg = lv_label_create(bg_panel); 
-    shift_status_label = lbl_stat_msg;
-    lv_obj_set_style_text_font(shift_status_label, &ui_font_chs_16, 0);
-    lv_obj_set_style_text_color(shift_status_label, lv_color_hex(0xE2E8F0), 0);
-    lv_label_set_text(shift_status_label, "系统准备就绪");
-    lv_obj_align(shift_status_label, LV_ALIGN_TOP_MID, 0, 160);
+    // shift_status_label 已移除以避免重叠问题
 
     // 2. 统计报表区
     lv_obj_t* stat_panel = lv_obj_create(bg_panel);
@@ -375,16 +370,14 @@ void UIManager::buildShiftView(lv_obj_t* parent) {
         lv_obj_align(t, LV_ALIGN_TOP_MID, 0, 0);
 
         *val_label = lv_label_create(cont);
-        lv_obj_set_style_text_font(*val_label, &lv_font_montserrat_26, 0); // 暂用英文
+        lv_obj_set_style_text_font(*val_label, &ui_font_chs_16, 0); 
         lv_obj_set_style_text_color(*val_label, lv_color_hex(color), 0);
-        lv_label_set_text(*val_label, "0.0 克"); // 这里强制加上中文
-        lv_obj_set_style_text_font(*val_label, &ui_font_chs_16, 0); // 必须用中文字体支持“克”
+        lv_label_set_text(*val_label, "0.000 kg"); 
         lv_obj_align(*val_label, LV_ALIGN_BOTTOM_MID, 0, 0);
     };
 
-    create_stat_item(0,   "累计总重量", &shift_total_weight_label, 0xE2E8F0);
-    create_stat_item(240, "当前班次重量", &shift_shift_weight_label, 0x38BDF8);
-    create_stat_item(480, "单次工作重量", &shift_work_weight_label, 0x10B981);
+    create_stat_item(80,  "累计总重量",   &shift_total_weight_label, 0xE2E8F0);
+    create_stat_item(460, "当前班次重量", &shift_shift_weight_label, 0x38BDF8);
 }
 
 void UIManager::buildDashboardView(lv_obj_t* parent) {
@@ -978,18 +971,24 @@ void UIManager::updateDashboard(const SystemContext* ctx) {
     }
 
     // 1. 生产数据统计
-    if (_isFirstUpdate || (ctx->prog.dirtyFlags & DF_CONFIG)) {
-        // 更新上下班管理页面的报表数据
-        if (shift_total_weight_label) lv_label_set_text_fmt(shift_total_weight_label, "%.1f 克", ctx->config.totalWeight);
-        if (shift_shift_weight_label) lv_label_set_text_fmt(shift_shift_weight_label, "%.1f 克", ctx->config.shiftWeight);
-        if (shift_work_weight_label) lv_label_set_text_fmt(shift_work_weight_label, "%.1f 克", ctx->config.accumulatedWeight);
+    if (_isFirstUpdate || (flags & DF_CONFIG)) {
+        char valBuf[64];
+        
+        // 更新上下班管理页面的报表数据 (转换为 kg, 3位小数)
+        if (shift_total_weight_label) {
+            snprintf(valBuf, sizeof(valBuf), "%.3f kg", ctx->config.totalWeight / 1000.0f);
+            lv_label_set_text(shift_total_weight_label, valBuf);
+        }
+        if (shift_shift_weight_label) {
+            snprintf(valBuf, sizeof(valBuf), "%.3f kg", ctx->config.shiftWeight / 1000.0f);
+            lv_label_set_text(shift_shift_weight_label, valBuf);
+        }
 
-        // 更新仪表盘目标范围
-        if (target_label) lv_label_set_text_fmt(target_label, "目标: %.1f-%.1f 克", ctx->config.targetMin, ctx->config.targetMax);
-    }
-
-    if (_isFirstUpdate || (ctx->prog.dirtyFlags & DF_SYS_STATUS)) {
-        if (shift_status_label) lv_label_set_text(shift_status_label, ctx->prog.statusText);
+        // 更新仪表盘目标范围 (恢复为 克)
+        if (target_label) {
+            snprintf(valBuf, sizeof(valBuf), "目标: %.1f-%.1f 克", ctx->config.targetMin, ctx->config.targetMax);
+            lv_label_set_text(target_label, valBuf);
+        }
     }
 
     // 2. 序列操作与动作进度
