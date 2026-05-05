@@ -126,6 +126,7 @@ void UIManager::buildAdminView(lv_obj_t* parent) {
 
     // 1. 创建嵌套 TabView (内部二级导航)
     admin_tv = lv_tabview_create(parent, LV_DIR_TOP, 40);
+    lv_obj_set_size(admin_tv, LV_PCT(100), LV_PCT(100));
     lv_obj_set_style_bg_color(admin_tv, lv_color_hex(0x0F172A), 0);
     lv_obj_add_event_cb(admin_tv, admin_tab_change_event_cb, LV_EVENT_VALUE_CHANGED, this);
     
@@ -151,6 +152,7 @@ void UIManager::buildAdminView(lv_obj_t* parent) {
 
     // --- Tab 1: 节点探测与白名单 ---
     lv_obj_t* scan_panel = lv_obj_create(t_scan);
+    lv_obj_set_size(scan_panel, LV_PCT(100), LV_PCT(100));
     lv_obj_set_style_bg_opa(scan_panel, 0, 0);
     lv_obj_set_style_border_width(scan_panel, 0, 0);
     
@@ -189,6 +191,7 @@ void UIManager::buildAdminView(lv_obj_t* parent) {
 
     // --- Tab 2: Modbus 诊断 (精简版) ---
     lv_obj_t* monitor_cont = lv_obj_create(t_modbus);
+    lv_obj_set_size(monitor_cont, LV_PCT(100), LV_PCT(100));
     lv_obj_set_style_bg_opa(monitor_cont, 0, 0);
     lv_obj_set_style_border_width(monitor_cont, 0, 0);
     lv_obj_set_flex_flow(monitor_cont, LV_FLEX_FLOW_COLUMN);
@@ -229,6 +232,7 @@ void UIManager::buildAdminView(lv_obj_t* parent) {
 
     // --- Tab 3: 舵机维护 ---
     lv_obj_t* servo_cont = lv_obj_create(t_servo);
+    lv_obj_set_size(servo_cont, LV_PCT(100), LV_PCT(100));
     lv_obj_set_style_bg_opa(servo_cont, 0, 0);
     lv_obj_set_style_border_width(servo_cont, 0, 0);
 
@@ -277,6 +281,7 @@ void UIManager::buildAdminView(lv_obj_t* parent) {
 
     // --- Tab 4: 皮带诊断 ---
     lv_obj_t* belt_cont = lv_obj_create(t_belt);
+    lv_obj_set_size(belt_cont, LV_PCT(100), LV_PCT(100));
     lv_obj_set_style_bg_opa(belt_cont, 0, 0);
     lv_obj_set_style_border_width(belt_cont, 0, 0);
 
